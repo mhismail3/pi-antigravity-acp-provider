@@ -15,75 +15,17 @@ const modelSelector = {
 	options: [{ value: "modern", name: "Modern" }],
 };
 
-describe("ACP session compatibility", () => {
-	it("prefers stable config options over legacy fields, including selectors without categories", () => {
+describe("ACP session configuration", () => {
+	it("reads stable model and mode selectors without categories", () => {
 		const state = decodeSessionState({
-			models: { currentModelId: "legacy", availableModels: [{ modelId: "legacy", name: "Legacy" }] },
 			configOptions: [modelSelector, { id: "mode", name: "Mode", type: "select", currentValue: "default", options: [{ value: "default", name: "Default" }] }],
 		});
 		expect(sessionModels(state)).toEqual({ currentModelId: "modern", availableModels: [{ modelId: "modern", name: "Modern" }] });
 		expect(sessionModes(state)?.currentModeId).toBe("default");
 	});
 
-	it("retains valid legacy metadata and tolerates absent optional state", () => {
-		const models = { currentModelId: "old", availableModels: [{ modelId: "old", name: "Old" }] };
-		expect(sessionModels(decodeSessionState({ models }))).toEqual(models);
-		expect(sessionModels(decodeSessionState({}))).toBeUndefined();
-	});
-
 	it("synthesizes effort-qualified models when model and thought_level selectors are split", () => {
 		const state = decodeSessionState({
-			configOptions: [
-				{
-					id: "model",
-					name: "Model",
-					category: "model",
-					type: "select",
-					currentValue: "gemini-3.8-flash",
-					options: [{ value: "gemini-3.8-flash", name: "Gemini 3.8 Flash" }],
-				},
-				{
-					id: "thinking_level",
-					name: "Thinking Level",
-					category: "thought_level",
-					type: "select",
-					currentValue: "medium",
-					options: [
-						{ value: "low", name: "Low" },
-						{ value: "medium", name: "Medium" },
-						{ value: "high", name: "High" },
-					],
-				},
-			],
-		});
-		expect(sessionModels(state)).toEqual({
-			currentModelId: "gemini-3.8-flash-medium",
-			availableModels: [
-				{ modelId: "gemini-3.8-flash-low", name: "Gemini 3.8 Flash (Low)" },
-				{ modelId: "gemini-3.8-flash-medium", name: "Gemini 3.8 Flash (Medium)" },
-				{ modelId: "gemini-3.8-flash-high", name: "Gemini 3.8 Flash (High)" },
-			],
-		});
-	});
-
-	it.each([
-		{
-			label: "base-only legacy models",
-			models: {
-				currentModelId: "gemini-3.8-flash",
-				availableModels: [{ modelId: "gemini-3.8-flash", name: "Gemini 3.8 Flash" }],
-			},
-		},
-		{
-			label: "stale legacy models",
-			models: {
-				currentModelId: "gemini-3.7-flash-low",
-				availableModels: [{ modelId: "gemini-3.7-flash-low", name: "Gemini 3.7 Flash (Low)" }],
-			},
-		},
-	])("ignores $label when split model and thought_level selectors are present", ({ models }) => {
-		const state = decodeSessionState({
-			models,
 			configOptions: [
 				{
 					id: "model",
@@ -128,20 +70,6 @@ describe("ACP session compatibility", () => {
 		expect(splitSessionModelId(state, "gemini-a-unknown")).toEqual({ base: "gemini-a", effort: "unknown" });
 	});
 
-	it("rejects duplicate legacy IDs even when the list length matches the live inventory", () => {
-		const state = splitState();
-		state.models = { currentModelId: "gemini-a-high", availableModels: Array.from({ length: 4 }, () => ({ modelId: "gemini-a-high", name: "Gemini A (High)" })) };
-		expect(sessionModels(state)?.availableModels.map((model) => model.modelId)).toEqual(["gemini-a-off", "gemini-a-low", "gemini-a-medium", "gemini-a-high"]);
-	});
-
-	it("retains legacy labels only for a complete compatible inventory", () => {
-		const state = splitState();
-		const legacy = sessionModels(state)!.availableModels.map((model) => ({ ...model, name: `Legacy ${model.name}` })).reverse();
-		state.models = { currentModelId: "stale", availableModels: legacy };
-		expect(sessionModels(state)?.availableModels).toEqual(legacy);
-		expect(sessionModels(state)?.currentModelId).toBe("gemini-a-high");
-	});
-
 	it("preserves native qualified IDs and gives exact IDs precedence over splitting", () => {
 		const state = splitState();
 		const selector = findSessionSelector(state, "model")!;
@@ -154,7 +82,6 @@ describe("ACP session compatibility", () => {
 
 	it.each([
 		null,
-		{ models: { currentModelId: "bad", availableModels: [{ modelId: 123, name: "Bad" }] } },
 		{ configOptions: [{ ...modelSelector, currentValue: false }] },
 		{ configOptions: [{ ...modelSelector, options: [{ value: 123, name: "Bad" }] }] },
 	])("rejects malformed session state without leaking server data: %j", (state) => {

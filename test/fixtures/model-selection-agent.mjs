@@ -33,7 +33,11 @@ for await (const line of readline.createInterface({ input: process.stdin })) {
 		reply(id, { protocolVersion: 1, agentInfo: { name: "model-selection-agent" }, authMethods: [],
 			agentCapabilities: { loadSession: true, sessionCapabilities: { resume: {} } } });
 	} else if (method === "session/new") {
-		reply(id, { sessionId: "selection-session", configOptions: configOptions() });
+		reply(id, scenario === "missing-model-selector" ? {
+			sessionId: "selection-session",
+			modes: { currentModeId: mode, availableModes: [{ id: mode, name: mode }] },
+			models: { currentModelId: `${model}-${effort}`, availableModels: [{ modelId: `${model}-${effort}`, name: model }] },
+		} : { sessionId: "selection-session", configOptions: configOptions() });
 	} else if (method === "session/resume" || method === "session/load") {
 		reply(id, { configOptions: configOptions() });
 	} else if (method === "session/set_config_option") {
@@ -49,6 +53,10 @@ for await (const line of readline.createInterface({ input: process.stdin })) {
 		} else if (params.configId === "mode") mode = params.value;
 		reply(id, { configOptions: configOptions() });
 	} else if (method === "session/prompt") {
+		if (scenario === "missing-model-selector") {
+			send({ jsonrpc: "2.0", id, error: { code: -32602, message: "MISSING_MODEL_SELECTOR_PROMPT_REACHED" } });
+			continue;
+		}
 		send({ jsonrpc: "2.0", method: "session/update", params: { sessionId: params.sessionId,
 			update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: `${model}/${effort}` } } } });
 		reply(id, { stopReason: "end_turn" });

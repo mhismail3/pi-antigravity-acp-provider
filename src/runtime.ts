@@ -937,8 +937,9 @@ export class AntigravityRuntime {
 			if (sessionModes(connection.getSessionState(session.sessionId))?.currentModeId !== mode) {
 				throw new AntigravityAcpError("protocol", "Antigravity did not confirm the requested permission mode");
 			}
-			const currentModel = sessionModels(session)?.currentModelId;
-			if (currentModel !== acpModelId) await connection.setModel(session.sessionId, acpModelId, signal);
+			const models = sessionModels(connection.getSessionState(session.sessionId));
+			if (!models) throw new AntigravityAcpError("protocol", "Antigravity did not advertise a model selector");
+			if (models.currentModelId !== acpModelId) await connection.setModel(session.sessionId, acpModelId, signal);
 			this.assertSessionEpoch(key, epoch, sessionEpoch);
 			if (mode !== this.permissionMode) throw new AntigravityAcpError("protocol", "Permission mode changed during session setup; retry the turn");
 			const createdBinding: Binding = {

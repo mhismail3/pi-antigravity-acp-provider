@@ -159,7 +159,6 @@ describe("AntigravityAcpConnection", () => {
 		});
 		try {
 			const session = await connection.newSession(process.cwd());
-			expect(session.models).toBeUndefined();
 			expect(sessionModels(session)?.availableModels).toEqual([
 				{ modelId: "auto", name: "Auto" }, { modelId: "gemini-test", name: "Gemini Test" },
 			]);
@@ -377,7 +376,7 @@ describe("AntigravityAcpConnection", () => {
 			expect(initialize.agentInfo?.name).toBe("fake-gemini");
 			await connection.authenticate({ methodId: "api", _meta: { "api-key": "secret" } });
 			const session = await connection.newSession(process.cwd());
-			expect(session.models?.availableModels).toHaveLength(2);
+			expect(sessionModels(session)?.availableModels).toHaveLength(2);
 			await connection.setModel(session.sessionId, "gemini-test");
 			const response = await connection.prompt({
 				sessionId: session.sessionId,

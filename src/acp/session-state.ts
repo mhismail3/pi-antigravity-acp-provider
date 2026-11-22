@@ -9,7 +9,6 @@ import { z } from "zod";
 import { splitEffortSuffix } from "../models.js";
 import { AntigravityAcpError } from "./errors.js";
 
-/** Antigravity's pre-config-option model metadata remains on older ACP v1 servers. */
 export interface AcpModelInfo {
 	modelId: string;
 	name: string;
@@ -18,7 +17,6 @@ export interface AcpModelInfo {
 export interface SessionState {
 	modes?: SessionModeState | null;
 	configOptions?: SessionConfigOption[] | null;
-	models?: { currentModelId: string; availableModels: AcpModelInfo[] } | null;
 }
 
 export type AcpNewSessionResponse = NewSessionResponse & SessionState;
@@ -34,11 +32,8 @@ const stateSchema = z.object({
 		]) }),
 		z.object({ ...selectorBase, type: z.literal("boolean"), currentValue: z.boolean() }),
 	])).nullish(),
-	models: z.object({ currentModelId: z.string(), availableModels: z.array(z.object({ modelId: z.string(), name: z.string() })) }).nullish(),
 });
 
-/** Validate the state we use explicitly, preserving Antigravity's legacy model
- * metadata even when it is absent from the SDK's generated response types. */
 export function decodeSessionState(response: unknown): SessionState {
 	const parsed = stateSchema.safeParse(response);
 	if (!parsed.success) throw new AntigravityAcpError("protocol", "Invalid ACP session configuration");
@@ -77,7 +72,7 @@ export function splitSessionModelId(state: SessionState, modelId: string): { bas
 
 export function sessionModels(state: SessionState): { currentModelId: string; availableModels: AcpModelInfo[] } | undefined {
 	const selector = findSessionSelector(state, "model");
-	if (!selector) return state.models ?? undefined;
+	if (!selector) return undefined;
 	const thoughtSelector = findSessionSelector(state, "thought_level");
 	const modelOptions = selectorValues(selector);
 	if (thoughtSelector) {
@@ -89,28 +84,15 @@ export function sessionModels(state: SessionState): { currentModelId: string; av
 				qualified(selector.currentValue) || !thoughtSelector.currentValue
 					? selector.currentValue
 					: `${selector.currentValue}-${thoughtSelector.currentValue}`;
-			// Live selectors are authoritative; retain legacy labels only for the
-			// same complete, duplicate-free inventory.
-			const synthesized = modelOptions.flatMap((modelOpt) =>
-				qualified(modelOpt.value)
-					? [{ modelId: modelOpt.value, name: modelOpt.name }]
-					: thoughtOptions.map((thoughtOpt) => ({
-							modelId: `${modelOpt.value}-${thoughtOpt.value}`,
-							name: `${modelOpt.name} (${thoughtOpt.name})`,
-						})),
-			);
-			const synthesizedIds = new Set(synthesized.map((m) => m.modelId));
-
-			const legacy = state.models?.availableModels;
-			const isLegacyCompatible =
-				legacy !== undefined &&
-				legacy.length === synthesizedIds.size &&
-				new Set(legacy.map((model) => model.modelId)).size === synthesizedIds.size &&
-				legacy.every((m) => synthesizedIds.has(m.modelId));
-
 			return {
 				currentModelId,
-				availableModels: isLegacyCompatible ? legacy : synthesized,
+				availableModels: modelOptions.flatMap((modelOpt) =>
+					qualified(modelOpt.value)
+						? [{ modelId: modelOpt.value, name: modelOpt.name }]
+						: thoughtOptions.map((thoughtOpt) => ({
+								modelId: `${modelOpt.value}-${thoughtOpt.value}`,
+								name: `${modelOpt.name} (${thoughtOpt.name})`,
+							}))),
 			};
 		}
 	}

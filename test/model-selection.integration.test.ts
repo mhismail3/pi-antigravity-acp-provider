@@ -79,6 +79,16 @@ describe("model selection integration", () => {
 		} finally { await acp.close(); }
 	});
 
+	it("refuses to prompt when the session omits stable model configuration", async () => {
+		const runtime = new AntigravityRuntime((options) => connection("missing-model-selector", options), "default");
+		try {
+			const model = projectModels([{ modelId: "gemini-a-high", name: "Gemini A (High)" }])[0]!;
+			const result = await runtime.stream(model, { messages: [{ role: "user", content: "hello", timestamp: 1 }] },
+				{ sessionId: "missing-model-selector", reasoning: "high" }).stream.result();
+			expect(result).toMatchObject({ stopReason: "error", errorMessage: expect.stringContaining("did not advertise a model selector") });
+		} finally { await runtime.close(); }
+	});
+
 	it("starts empty and replaces a stale catalog with the authoritative live inventory, including empty", async () => {
 		const runtime = new AntigravityRuntime((options) => connection("empty-catalog", options));
 		const { provider } = createAntigravityProvider(runtime);

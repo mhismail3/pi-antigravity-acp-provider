@@ -18,7 +18,7 @@ extensions/
   index.ts                    # minimal Pi registration + lifecycle wiring
 src/
   provider.ts                 # complete pi-ai Provider factory
-  models.ts                   # fallback catalog + ACP projection
+  models.ts                   # live ACP model projection + reference rates
   auth.ts                     # Pi /login adapter to ACP authenticate
   stream/
     stream.ts                 # required Provider.stream adapter; delegates to shared coordinator
@@ -130,19 +130,19 @@ All deadline timers use `unref` where possible. User login and permission UI hav
 
 ## 4. Startup and model publication
 
-Do not spawn during extension load. `getModels()` immediately returns a conservative fallback catalog, including Gemini's `auto` alias and known stable ids validated for the pinned CLI. Mark image input according to pinned capabilities, reasoning only when thought output is supported, zero dollar costs, and conservative context/output metadata.
+Do not spawn during extension load. `getModels()` starts empty. Offline refresh may restore only the last discovered inventory, marked “cached; access unverified”; it does not invent model IDs or thinking tiers.
 
-On explicit Pi model refresh, after login, or lazy first use:
+On an explicit network-enabled model refresh:
 
 1. Acquire/start a catalog process.
-2. Initialize and authenticate using the effective provider credential/ambient Gemini store.
-3. Create a neutral session rooted at the current/project cwd.
-4. Read `models.availableModels/currentModelId`.
+2. Initialize and authenticate using the effective provider credential/native Antigravity store.
+3. Create a disposable session rooted at the current/project cwd.
+4. Require the stable model selector, select each advertised base and read its own returned thinking options.
 5. Validate ids/names and project into Pi models.
-6. Publish an atomic cached catalog with CLI version and timestamp.
-7. Close the dedicated catalog process; never bind its probe session or process to chat in v1.
+6. Publish and persist the authoritative catalog with its check timestamp; a successful empty result clears stale entries.
+7. Close the dedicated process and remove its disposable conversation after exit; never bind discovery to chat.
 
-If refresh fails, retain the previous/fallback list and return a diagnostic. Do not erase a good cache.
+If refresh fails, retain previously discovered data and surface the error. No static catalog or model-selection fallback replaces failed discovery.
 
 ## 5. Turn flow
 
@@ -154,7 +154,7 @@ Pi streamSimple
   ├─ get/create process; initialize/authenticate
   ├─ start/refresh authenticated loopback MCP bridge for active Pi tools
   ├─ session/new(cwd, mcpServers=[piBridgeDescriptor])
-  ├─ set model if currentModelId differs
+  ├─ require stable model configuration; set model if currentModelId differs
   ├─ build one-time reconstruction resource
   ├─ session/prompt([images, reconstruction resource, latest text])
   ├─ map concurrent updates to Pi events
@@ -226,13 +226,12 @@ Given open destructive load reports, shipping reconstruction first is a delibera
 
 ## 8. Model switching
 
-Before every new prompt, compare Pi's `model.id` with `binding.effectiveModelId` and current session capabilities:
+Before a fresh or restored binding can prompt, require stable model configuration even when the session's reported model already matches the request. Compare the requested model with the confirmed session selection:
 
-- if equal: no call;
-- if available and different: call `unstable_setSessionModel`, update binding only after success;
-- if method changed in newer ACP: use a capability/version adapter with an integration fixture;
-- if unsupported or the call fails: return a precise model error and do not prompt on the stale model; ACP `session/new` has no model parameter, so there is no valid fallback until another model-control method is explicitly implemented and tested;
-- never silently continue on the old model.
+- if equal: retain the confirmed selection;
+- if advertised and different: use `session/set_config_option` to confirm the base model, then validate and confirm its fresh thinking selector;
+- if configuration is missing, unavailable or unconfirmed: return a precise model error and do not prompt on a stale model;
+- never use a draft model method or silently continue on the old model.
 
 Store `responseModel` from per-model usage/current updates where possible. Pi model selection and Gemini's auto-router can differ; diagnostics should make that visible.
 
