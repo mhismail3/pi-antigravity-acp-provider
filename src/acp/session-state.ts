@@ -66,14 +66,11 @@ export function selectorValues(option: SelectOption): SessionConfigSelectOption[
  * thought levels, without misinterpreting an exact native model ID. */
 export function splitSessionModelId(state: SessionState, modelId: string): { base: string; effort: string } | undefined {
 	const model = findSessionSelector(state, "model");
-	const thought = findSessionSelector(state, "thought_level");
-	if (!model || !thought) return undefined;
+	if (!model) return undefined;
 	const models = selectorValues(model);
 	if (models.some((option) => option.value === modelId)) return undefined;
-	const levels = selectorValues(thought);
-	for (const base of models) {
-		const level = levels.find((option) => `${base.value}-${option.value}` === modelId);
-		if (level) return { base: base.value, effort: level.value };
+	for (const base of [...models].sort((a, b) => b.value.length - a.value.length)) {
+		if (modelId.startsWith(`${base.value}-`)) return { base: base.value, effort: modelId.slice(base.value.length + 1) };
 	}
 	return undefined;
 }

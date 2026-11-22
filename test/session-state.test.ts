@@ -125,7 +125,7 @@ describe("ACP session compatibility", () => {
 			expect(splitSessionModelId(state, model.modelId)).toEqual({ base: "gemini-a", effort: model.modelId.slice("gemini-a-".length) });
 		}
 		expect(splitSessionModelId(state, "gemini-a-off")).toEqual({ base: "gemini-a", effort: "off" });
-		expect(splitSessionModelId(state, "gemini-a-unknown")).toBeUndefined();
+		expect(splitSessionModelId(state, "gemini-a-unknown")).toEqual({ base: "gemini-a", effort: "unknown" });
 	});
 
 	it("rejects duplicate legacy IDs even when the list length matches the live inventory", () => {

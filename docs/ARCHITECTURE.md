@@ -63,14 +63,15 @@ The extension entry must contain no transport or protocol logic. It creates one 
 
 A complete provider has:
 
-- id `gemini-acp`, name `Gemini CLI (ACP)`;
+- id `antigravity-acp`, name `Google Antigravity (ACP)`;
 - ambient/API-key auth adapter;
-- synchronous fallback models;
-- `refreshModels` that obtains and publishes an authenticated ACP catalog;
+- an initially empty catalog and explicitly unverified cached discovery for offline startup;
+- `refreshModels` that publishes the authenticated live ACP inventory, including an empty result;
+- discovery through each base model’s own returned thinking selector, without a static catalog or cross-model effort guesses;
 - shared `stream`/`streamSimple` implementation;
 - no network `baseUrl` because requests go to a local child.
 
-Use a custom API id such as `gemini-acp`. Model ids should equal ACP `modelId` unless collision/normalization forces an encoding. Names come from ACP. Store the upstream id separately only if Pi ids must be transformed.
+The API id is `antigravity-acp`. Names and selector values come from ACP. Pi groups advertised effort variants in its thinking map. Selection uses only confirmed live configuration selectors; unsupported selections do not fall back to `session/set_model`. Hosts must explicitly allow a network refresh after sign-in or an account change. Disposable discovery sessions never prompt and are removed after their processes exit.
 
 ### Runtime/session manager
 

@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Type } from "typebox";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { AntigravityAcpConnection } from "../src/acp/connection.js";
 import { AcpSessionStore } from "../src/acp/session-store.js";
@@ -30,13 +30,17 @@ const model: Model<"antigravity-acp"> = {
 
 describe("AntigravityRuntime", () => {
 	it("discovers and runs models on a config-options-only ACP server", async () => {
+		const home = fs.mkdtempSync(path.join(os.tmpdir(), "acp-discovery-"));
+		vi.stubEnv("GEMINI_HOME", home);
 		const runtime = new AntigravityRuntime(
-			(options) => new AntigravityAcpConnection({ ...options, command: process.execPath, args: [fakeAgent, "config-options"] }),
+			(options) => new AntigravityAcpConnection({ ...options, command: process.execPath, args: [fakeAgent, "config-options"],
+				env: { ...process.env, FAKE_AGENT_CONVERSATIONS: "uuid" } }),
 		);
 		try {
 			expect(await runtime.discoverModels("test-key")).toEqual([
 				{ modelId: "auto", name: "Auto" }, { modelId: "gemini-test", name: "Gemini Test" },
 			]);
+			expect(fs.readdirSync(path.join(home, "antigravity-acp", "conversations"))).toEqual([]);
 			const first = runtime.stream(model, { messages: [{ role: "user", content: "hello", timestamp: 1 }] }, { apiKey: "test-key", sessionId: "modern-session" });
 			for await (const _event of first.stream) void _event;
 			expect(first.message.stopReason).toBe("stop");
@@ -45,6 +49,8 @@ describe("AntigravityRuntime", () => {
 			expect((await runtime.snapshot()).permissionMode).toBe("default");
 		} finally {
 			await runtime.close();
+			fs.rmSync(home, { recursive: true, force: true });
+			vi.unstubAllEnvs();
 		}
 	});
 

@@ -23,7 +23,10 @@ import { ResourceExhaustionTracker } from "./quota.js";
 import {
 	decodeSessionState,
 	findSessionSelector,
+	selectorValues,
+	sessionModels,
 	splitSessionModelId,
+	type AcpModelInfo,
 	type AcpNewSessionResponse,
 	type SessionSelectorCategory,
 	type SessionState,
@@ -232,38 +235,35 @@ export class AntigravityAcpConnection {
 		return this.updateSessionState(sessionId, response);
 	}
 
+	async discoverModels(sessionId: string, signal?: AbortSignal): Promise<AcpModelInfo[]> {
+		const selector = findSessionSelector(this.getSessionState(sessionId), "model");
+		if (!selector) throw new AntigravityAcpError("protocol", "Antigravity did not advertise a model selector");
+		const inventory: AcpModelInfo[] = [];
+		for (const model of selectorValues(selector)) {
+			await this.setSelector(sessionId, "model", model.value, signal);
+			const state = this.getSessionState(sessionId);
+			inventory.push(...(sessionModels(state)?.availableModels ?? []).filter((candidate) =>
+				candidate.modelId === model.value || splitSessionModelId(state, candidate.modelId)?.base === model.value));
+		}
+		return inventory;
+	}
+
 	async setModel(sessionId: string, modelId: string, signal?: AbortSignal): Promise<void> {
 		await this.initialize(signal);
-		// Match the live selectors, not a fixed suffix list: future servers may
-		// advertise levels such as `off`. Exact native model IDs take precedence.
-		const state = this.getSessionState(sessionId);
-		const split = splitSessionModelId(state, modelId);
+		const split = splitSessionModelId(this.getSessionState(sessionId), modelId);
 		if (split) {
-			const baseConfirmed = findSessionSelector(state, "model")?.currentValue === split.base ||
-				await this.applySelector(sessionId, "model", split.base, signal);
-			if (baseConfirmed) {
-				// Changing the base may replace the effort selector. Require a fresh
-				// confirmation; never report a partially applied selection as success.
-				if (!await this.applySelector(sessionId, "thought_level", split.effort, signal)) {
-					throw new AntigravityAcpError("protocol", "Antigravity did not confirm the requested thought_level selection");
-				}
-				if (findSessionSelector(this.getSessionState(sessionId), "model")?.currentValue !== split.base) {
-					throw new AntigravityAcpError("protocol", "Antigravity changed the model during thought_level selection");
-				}
-				return;
+			await this.setSelector(sessionId, "model", split.base, signal);
+			if (!await this.setSelector(sessionId, "thought_level", split.effort, signal)) {
+				throw new AntigravityAcpError("protocol", "Antigravity did not confirm the requested thought_level selection");
 			}
+			if (findSessionSelector(this.getSessionState(sessionId), "model")?.currentValue !== split.base) {
+				throw new AntigravityAcpError("protocol", "Antigravity changed the model during thought_level selection");
+			}
+			return;
 		}
-		if (await this.applySelector(sessionId, "model", modelId, signal)) return;
-		// Older official Antigravity builds still implement this removed draft
-		// method. Preserve its classified auth/transport errors and their causes.
-		await this.withAbort(
-			this.withDeadline(
-				this.connection.agent.request("session/set_model", { sessionId, modelId }),
-				this.operationTimeoutMs,
-				"session/set_model",
-			),
-			signal,
-		);
+		if (!await this.setSelector(sessionId, "model", modelId, signal)) {
+			throw new AntigravityAcpError("protocol", "Antigravity did not advertise a model selector");
+		}
 	}
 
 	async setMode(sessionId: string, modeId: string, signal?: AbortSignal): Promise<void> {
@@ -353,13 +353,15 @@ export class AntigravityAcpConnection {
 		value: string,
 		signal?: AbortSignal,
 	): Promise<boolean> {
-		if (!findSessionSelector(this.getSessionState(sessionId), category)) return false;
+		const selector = findSessionSelector(this.getSessionState(sessionId), category);
+		if (!selector) return false;
+		if (!selectorValues(selector).some((option) => option.value === value)) {
+			throw new AntigravityAcpError("invalid_input", `Antigravity ${category} value '${value}' is not advertised for this session`);
+		}
 		if (await this.applySelector(sessionId, category, value, signal)) return true;
 		throw new AntigravityAcpError("protocol", `Antigravity did not confirm the requested ${category} selection`);
 	}
 
-	/** A silent mismatch permits model selection to try the legacy method.
-	 * Real request failures must propagate without being treated as mismatches. */
 	private async applySelector(
 		sessionId: string,
 		category: SessionSelectorCategory,

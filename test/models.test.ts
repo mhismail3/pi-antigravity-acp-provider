@@ -1,29 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { FALLBACK_MODELS, projectModels, resolveAcpModelId, restoreModels, splitEffortSuffix } from "../src/models.js";
+import { projectModels, resolveAcpModelId, restoreModels, splitEffortSuffix } from "../src/models.js";
 import { createAntigravityProvider } from "../src/provider.js";
 
 describe("projectModels", () => {
-	it("keeps Flash as the conservative offline default while allowing explicit Argon selection", () => {
-		expect(FALLBACK_MODELS[0]?.id).toBe("gemini-3.8-flash");
-		expect(FALLBACK_MODELS.some((model) => model.id === "gemini-4-argon")).toBe(true);
-	});
-
-	it("lists Carbon offline with the tiers the official ACP server advertises", () => {
-		const carbon = FALLBACK_MODELS.find((model) => model.id === "gemini-4-carbon");
-		expect(carbon).toMatchObject({
-			name: "Gemini 4 Carbon",
-			reasoning: true,
-			thinkingLevelMap: {
-				low: "gemini-4-carbon-low",
-				medium: "gemini-4-carbon-medium",
-				high: "gemini-4-carbon-high",
-				xhigh: null,
-			},
-		});
-		expect(carbon?.cost.input).toBe(2);
-	});
-
 	it.each(["low", "medium", "high"])("splits a known %s suffix without truncating the base", (effort) => {
 		expect(splitEffortSuffix(`gemini-hyphenated-base-${effort}`)).toEqual({ base: "gemini-hyphenated-base", effort });
 	});

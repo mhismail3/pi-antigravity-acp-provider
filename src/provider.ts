@@ -10,7 +10,7 @@ import type {
 } from "@earendil-works/pi-ai";
 
 import { hasAntigravityAuth } from "./acp/antigravity.js";
-import { FALLBACK_MODELS, projectModels, PROVIDER_ID, restoreModels } from "./models.js";
+import { projectModels, PROVIDER_ID, restoreModels } from "./models.js";
 import { AntigravityRuntime, MANAGED_AUTH_MARKER } from "./runtime.js";
 
 export interface AntigravityProviderBundle {
@@ -19,7 +19,7 @@ export interface AntigravityProviderBundle {
 }
 
 export function createAntigravityProvider(runtime = new AntigravityRuntime()): AntigravityProviderBundle {
-	let models = [...FALLBACK_MODELS];
+	let models: Model<"antigravity-acp">[] = [];
 	const provider: Provider<"antigravity-acp"> = {
 		id: PROVIDER_ID,
 		name: "Google Antigravity (ACP)",
@@ -106,13 +106,11 @@ export function createAntigravityProvider(runtime = new AntigravityRuntime()): A
 		getModels: () => models,
 		async refreshModels(context: RefreshModelsContext) {
 			if (!context.allowNetwork) {
-				// Restore the last discovered catalog before Pi resolves startup model
-				// patterns, so models outside the offline fallback stay selectable.
 				const restored = restoreModels(context.stored?.models ?? []);
 				if (restored.length === 0) return;
 				await context.publish({
 					update: () => {
-						models = restored;
+						models = restored.map((model) => ({ ...model, name: `${model.name} (cached; access unverified)` }));
 					},
 				});
 				return;
@@ -123,15 +121,7 @@ export function createAntigravityProvider(runtime = new AntigravityRuntime()): A
 					: context.credential?.type === "oauth"
 						? MANAGED_AUTH_MARKER
 						: undefined;
-			let discovered;
-			try {
-				discovered = projectModels(await runtime.discoverModels(key, context.signal));
-			} catch {
-				// Startup refresh must not hide the conservative offline catalog when
-				// authentication is absent, expired, or temporarily unavailable.
-				return;
-			}
-			if (discovered.length === 0) return;
+			const discovered = projectModels(await runtime.discoverModels(key, context.signal));
 			await context.publish({
 				persist: { models: discovered, checkedAt: Date.now() },
 				update: () => {

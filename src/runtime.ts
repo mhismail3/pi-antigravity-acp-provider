@@ -239,16 +239,18 @@ export class AntigravityRuntime {
 		this.assertEpoch(epoch);
 		const cwd = process.cwd();
 		const connection = this.createConnection({ cwd });
+		let sessionId: string | undefined;
 		try {
 			const initialize = await connection.initialize(signal);
 			this.assertEpoch(epoch);
 			await authenticateForCredential(connection, initialize, apiKey, signal);
 			this.assertEpoch(epoch);
-			const session = await connection.newSession(cwd, signal);
+			sessionId = (await connection.newSession(cwd, signal)).sessionId;
 			this.assertEpoch(epoch);
-			return sessionModels(session)?.availableModels ?? [];
+			return await connection.discoverModels(sessionId, signal);
 		} finally {
 			await connection.close();
+			if (sessionId && !connection.process.alive) removeConversation(sessionId);
 		}
 	}
 

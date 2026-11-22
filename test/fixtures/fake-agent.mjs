@@ -9,10 +9,10 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 
 const rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
 const scenario = process.argv[2];
-const modern = scenario?.startsWith("config-options") || scenario === "effort-selector" || scenario === "legacy-set-model";
+const modern = scenario?.startsWith("config-options") || scenario === "effort-selector";
 // The real 1.4.x server takes only base model ids on its `model` selector and
 // silently ignores an effort-qualified id; these scenarios model that.
-const qualifiedModelRejected = scenario === "effort-selector" || scenario === "legacy-set-model";
+const qualifiedModelRejected = scenario === "effort-selector";
 const effortSelector = scenario === "effort-selector";
 const send = (value) => process.stdout.write(`${JSON.stringify(value)}\n`);
 let model = "auto";
@@ -166,6 +166,7 @@ for await (const line of rl) {
 			result: modern ? { sessionId, configOptions: sessionConfigOptions() } : {
 				sessionId,
 				modes: sessionModes(),
+				configOptions: [sessionConfigOptions()[0]],
 				models: {
 					currentModelId: model,
 					availableModels: [
@@ -181,6 +182,7 @@ for await (const line of rl) {
 			id,
 			result: modern ? { configOptions: sessionConfigOptions() } : {
 				modes: sessionModes(true),
+				configOptions: [sessionConfigOptions()[0]],
 				models: { currentModelId: model, availableModels: [] },
 			},
 		});
@@ -195,17 +197,9 @@ for await (const line of rl) {
 			send({ jsonrpc: "2.0", id, error: { code: -32602, message: "Unknown selector" } });
 			continue;
 		}
-		send({ jsonrpc: "2.0", id, result: { configOptions: sessionConfigOptions() } });
+		send({ jsonrpc: "2.0", id, result: { configOptions: modern ? sessionConfigOptions() : [sessionConfigOptions()[0]] } });
 	} else if (modern && (method === "session/set_model" || method === "session/set_mode")) {
-		if (scenario === "legacy-set-model" && method === "session/set_model") {
-			model = params.modelId;
-			send({ jsonrpc: "2.0", id, result: {} });
-			continue;
-		}
 		send({ jsonrpc: "2.0", id, error: { code: -32601, message: "Use config options" } });
-	} else if (method === "session/set_model") {
-		model = params.modelId;
-		send({ jsonrpc: "2.0", id, result: {} });
 	} else if (method === "session/set_mode") {
 		if (scenario === "set-mode-fails" && params.modeId === "auto_edit") {
 			send({ jsonrpc: "2.0", id, error: { code: -32602, message: "Mode change refused" } });

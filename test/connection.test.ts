@@ -206,20 +206,6 @@ describe("AntigravityAcpConnection", () => {
 		}
 	});
 
-	it("falls back to the draft set_model when the model selector ignores the id", async () => {
-		const connection = new AntigravityAcpConnection({
-			cwd: path.dirname(fakeAgent), command: process.execPath, args: [fakeAgent, "legacy-set-model"],
-		});
-		try {
-			const session = await connection.newSession(process.cwd());
-			await connection.setModel(session.sessionId, "gemini-test-high");
-			const resumed = await connection.resumeSession(session.sessionId, process.cwd());
-			expect(sessionModels(resumed)?.currentModelId).toBe("gemini-test-high");
-		} finally {
-			await connection.close();
-		}
-	});
-
 	it.each(["stream progress", "native work"])("keeps an active %s turn alive beyond the idle budget", async (text) => {
 		const connection = new AntigravityAcpConnection({ cwd: process.cwd(), command: process.execPath,
 			args: [fakeAgent], env: { ...process.env, FAKE_PROGRESS_STEP_MS: "60" }, promptIdleTimeoutMs: 300, promptWorkIdleTimeoutMs: 1500 });

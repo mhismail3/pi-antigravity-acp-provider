@@ -43,45 +43,6 @@ export function costRatesFor(modelId: string): Model<typeof API_ID>["cost"] {
 	return ZERO_COST;
 }
 
-// Keep the broadly available Flash model first for offline/default selection.
-export const FALLBACK_MODELS: readonly Model<typeof API_ID>[] = [
-	reasoningModel("gemini-3.8-flash", "Gemini 3.8 Flash", {
-		low: "gemini-3.8-flash-low",
-		medium: "gemini-3.8-flash-medium",
-		high: "gemini-3.8-flash-high",
-	}),
-	reasoningModel("gemini-4-hydrogen", "Gemini 4 Hydrogen", {
-		low: "gemini-4-hydrogen-low",
-		medium: "gemini-4-hydrogen-medium",
-		high: "gemini-4-hydrogen-high",
-		xhigh: "gemini-4-hydrogen-xhigh",
-	}),
-	reasoningModel("gemini-4-argon", "Gemini 4 Argon", {
-		low: "gemini-4-argon-low",
-		medium: "gemini-4-argon-medium",
-		high: "gemini-4-argon-high",
-	}),
-	reasoningModel("gemini-4-carbon", "Gemini 4 Carbon", {
-		low: "gemini-4-carbon-low",
-		medium: "gemini-4-carbon-medium",
-		high: "gemini-4-carbon-high",
-	}),
-	reasoningModel("gemini-3.7-flash", "Gemini 3.7 Flash", {
-		low: "gemini-3.7-flash-low",
-		medium: "gemini-3.7-flash-medium",
-		high: "gemini-3.7-flash-high",
-	}),
-	reasoningModel("gemini-3.6-flash", "Gemini 3.6 Flash", {
-		low: "gemini-3.6-flash-low",
-		medium: "gemini-3.6-flash-medium",
-		high: "gemini-3.6-flash-high",
-	}),
-	reasoningModel("gemini-3.1-pro", "Gemini 3.1 Pro", {
-		low: "gemini-3.1-pro-low",
-		high: "gemini-pro-agent",
-	}),
-];
-
 /** Collapse Antigravity's effort-qualified ACP IDs into one Pi model. The
  * exact server IDs live in thinkingLevelMap, allowing Shift+Tab to select the
  * corresponding low/medium/high variant without cluttering /model. */

@@ -4,12 +4,12 @@ import { Type } from "typebox";
 import { describe, expect, it } from "vitest";
 
 import { AntigravityAcpConnection } from "../src/acp/connection.js";
-import { FALLBACK_MODELS } from "../src/models.js";
+import { projectModels } from "../src/models.js";
 import { createAntigravityProvider } from "../src/provider.js";
 import { AntigravityRuntime } from "../src/runtime.js";
 
 const fakeAgent = fileURLToPath(new URL("./fixtures/fake-agent.mjs", import.meta.url));
-const model = FALLBACK_MODELS[0]!;
+const model = projectModels([{ modelId: "gemini-test", name: "Gemini Test" }])[0]!;
 
 describe("native Pi provider", () => {
 	it("passes transcript instructions through to the ACP prompt", async () => {

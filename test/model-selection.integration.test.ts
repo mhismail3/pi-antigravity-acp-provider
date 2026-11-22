@@ -46,12 +46,11 @@ describe("model selection integration", () => {
 		} finally { await acp.close(); }
 	});
 
-	it.each(["legacy", "ignored-base"])("falls back after a silently ignored selector update (%s)", async (scenario) => {
-		const acp = connection(scenario);
+	it("rejects a silently ignored model selector update", async () => {
+		const acp = connection("ignored-base");
 		try {
 			const session = await acp.newSession(process.cwd());
-			await acp.setModel(session.sessionId, "gemini-b-low");
-			expect(sessionModels(await acp.resumeSession(session.sessionId, process.cwd()))?.currentModelId).toBe("gemini-b-low");
+			await expect(acp.setModel(session.sessionId, "gemini-b-low")).rejects.toThrow("did not confirm the requested model selection");
 		} finally { await acp.close(); }
 	});
 
@@ -80,43 +79,43 @@ describe("model selection integration", () => {
 		} finally { await acp.close(); }
 	});
 
-	it.each([
-		["legacy-auth", "auth", "Token expired"],
-		["legacy-timeout", "timeout", "session/set_model timed out"],
-	])("preserves classified failures from the legacy method (%s)", async (scenario, code, message) => {
-		const acp = connection(scenario, { operationTimeoutMs: 200 });
+	it("starts empty and replaces a stale catalog with the authoritative live inventory, including empty", async () => {
+		const runtime = new AntigravityRuntime((options) => connection("empty-catalog", options));
+		const { provider } = createAntigravityProvider(runtime);
+		const publish = async ({ update }: ModelsPublication) => { update?.(); return true; };
 		try {
-			const session = await acp.newSession(process.cwd());
-			const error = await acp.setModel(session.sessionId, "gemini-b-low").catch((cause: unknown) => cause);
-			expect(error).toMatchObject({ code, message: expect.stringContaining(message) });
-			if (code === "auth") expect(error).toHaveProperty("cause", expect.objectContaining({ code: -32000, message: "Token expired" }));
-		} finally { await acp.close(); }
+			expect(provider.getModels()).toEqual([]);
+			await provider.refreshModels!({ allowNetwork: false, signal: new AbortController().signal,
+				stored: { models: projectModels([{ modelId: "gemini-unavailable", name: "Unavailable" }]) }, publish });
+			expect(provider.getModels().map((model) => model.id)).toEqual(["gemini-unavailable"]);
+			expect(provider.getModels()[0]?.name).toContain("cached; access unverified");
+			await provider.refreshModels!({ allowNetwork: true, signal: new AbortController().signal, publish });
+			expect(provider.getModels()).toEqual([]);
+		} finally { await runtime.close(); }
 	});
 
-	it("does not replace a legacy transport exit with a generic selection error", async () => {
-		const acp = connection("legacy-exit");
+	it.each(["model-specific", "initial-fixed"])("discovers and selects each model's own efforts (%s)", async (scenario) => {
+		const runtime = new AntigravityRuntime((options) => connection(scenario, options));
 		try {
-			const session = await acp.newSession(process.cwd());
-			const error = await acp.setModel(session.sessionId, "gemini-b-low").catch((cause: unknown) => cause);
-			// EOF and the child exit event race; either original transport diagnostic
-			// is useful, unlike the old blanket protocol-selection replacement.
-			expect(error).toBeInstanceOf(Error);
-			expect(error).not.toMatchObject({ code: "protocol" });
-			expect((error as Error).message).toMatch(/ACP connection closed|process exited/u);
-			expect(await acp.process.exited).toMatchObject({ code: 7 });
-		} finally { await acp.close(); }
+			const inventory = await runtime.discoverModels(undefined);
+			expect(inventory.map((model) => model.modelId)).toEqual([
+				...(scenario === "initial-fixed" ? ["gemini-a"] : ["gemini-a-low", "gemini-a-medium", "gemini-a-high"]), "gemini-b-xhigh",
+			]);
+			const model = projectModels(inventory).find((candidate) => candidate.id === "gemini-b-xhigh")!;
+			const result = await runtime.stream(model, { messages: [{ role: "user", content: "hello", timestamp: 1 }] },
+				{ sessionId: "model-specific", reasoning: "xhigh" }).stream.result();
+			expect(result.stopReason).toBe("stop");
+			expect(result.content).toEqual([{ type: "text", text: "gemini-b/xhigh" }]);
+		} finally { await runtime.close(); }
 	});
 
-	it("cancels an in-flight legacy selection without replacing the abort diagnostic", async () => {
-		const acp = connection("legacy-timeout");
-		const controller = new AbortController();
+	it("rejects unadvertised models without invoking a draft selection fallback", async () => {
+		const acp = connection("split");
 		try {
 			const session = await acp.newSession(process.cwd());
-			const pending = acp.setModel(session.sessionId, "gemini-b-low", controller.signal);
-			const rejected = expect(pending).rejects.toMatchObject({ code: "aborted" });
-			setTimeout(() => controller.abort(), 50);
-			await rejected;
-		} finally { controller.abort(); await acp.close(); }
+			await expect(acp.setModel(session.sessionId, "gemini-unavailable-high")).rejects.toThrow("not advertised");
+			await expect(acp.setModel(session.sessionId, "gemini-a-unknown")).rejects.toThrow("not advertised");
+		} finally { await acp.close(); }
 	});
 
 	it("publishes discovered reasoning models and applies effort changes on a warm provider session", async () => {
@@ -158,7 +157,6 @@ describe("model selection integration", () => {
 			expect(stored.models.some((model) => model.id === "gemini-b")).toBe(true);
 		} finally { await runtime.close(); }
 
-		// A fresh process starts from the offline fallback, which lacks gemini-b.
 		const offline = new AntigravityRuntime(() => { throw new Error("offline restore must not spawn ACP"); });
 		const restarted = createAntigravityProvider(offline).provider;
 		try {
@@ -171,7 +169,7 @@ describe("model selection integration", () => {
 		} finally { await offline.close(); }
 	});
 
-	it("keeps the offline fallback when nothing usable was persisted", async () => {
+	it("keeps the catalog empty when nothing usable was persisted", async () => {
 		const offline = new AntigravityRuntime(() => { throw new Error("offline restore must not spawn ACP"); });
 		const { provider } = createAntigravityProvider(offline);
 		const before = provider.getModels().map((model) => model.id);
@@ -184,7 +182,7 @@ describe("model selection integration", () => {
 			}
 			expect(published).toBe(0);
 			expect(provider.getModels().map((model) => model.id)).toEqual(before);
-			expect(before).toContain("gemini-4-carbon");
+			expect(before).toEqual([]);
 		} finally { await offline.close(); }
 	});
 

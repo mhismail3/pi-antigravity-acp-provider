@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { FALLBACK_MODELS, costRatesFor, projectModels, resolveAcpModelId, splitEffortSuffix } from "../src/models.js";
+import { costRatesFor, projectModels, resolveAcpModelId, splitEffortSuffix } from "../src/models.js";
 import { usageFromPrompt } from "../src/stream/usage.js";
+
+const models = projectModels(["gemini-3.8-flash-low", "gemini-3.8-flash-high", "gemini-4-argon-medium", "gemini-4-argon-high",
+	"gemini-4-hydrogen-low", "gemini-4-hydrogen-xhigh"].map((modelId) => ({ modelId, name: modelId })));
 
 describe("costRatesFor", () => {
 	it("matches models.dev catalog rates for the flash family, including effort-qualified ids", () => {
@@ -37,9 +40,9 @@ describe("costRatesFor", () => {
 		expect(costRatesFor("gemini-unknown-family")).toEqual({ input: 0, output: 0, cacheRead: 0, cacheWrite: 0 });
 	});
 
-	it("applies catalog rates to projected fallback models", () => {
-		const flash = FALLBACK_MODELS.find((model) => model.id === "gemini-3.8-flash");
-		const argon = FALLBACK_MODELS.find((model) => model.id === "gemini-4-argon");
+	it("applies catalog rates to projected advertised models", () => {
+		const flash = models.find((model) => model.id === "gemini-3.8-flash");
+		const argon = models.find((model) => model.id === "gemini-4-argon");
 		expect(flash?.cost.input).toBe(0.75);
 		expect(argon?.cost.output).toBe(10);
 	});
@@ -47,7 +50,7 @@ describe("costRatesFor", () => {
 
 describe("usageFromPrompt cost accounting", () => {
 	it("prices the turn from the model's catalog rates", () => {
-		const flash = FALLBACK_MODELS.find((model) => model.id === "gemini-3.8-flash")!;
+		const flash = models.find((model) => model.id === "gemini-3.8-flash")!;
 		const usage = usageFromPrompt(
 			{ stopReason: "end_turn", usage: { inputTokens: 1_000_000, outputTokens: 1000, totalTokens: 1_001_000 } },
 			flash,
@@ -62,7 +65,7 @@ describe("usageFromPrompt cost accounting", () => {
 		["net", 1_500_000, 1_000_000],
 		["legacy gross", 1_000_000, 500_000],
 	] as const)("prices cache reads at the discounted rate for %s input", (_format, totalTokens, expectedInput) => {
-		const flash = FALLBACK_MODELS.find((model) => model.id === "gemini-3.8-flash")!;
+		const flash = models.find((model) => model.id === "gemini-3.8-flash")!;
 		const usage = usageFromPrompt(
 			{ stopReason: "end_turn", usage: { inputTokens: 1_000_000, outputTokens: 0, cachedReadTokens: 500_000, totalTokens } },
 			flash,
@@ -105,8 +108,8 @@ describe("xhigh tier handling", () => {
 	});
 
 	it("resolves xhigh to the xhigh id when present and clamps to high otherwise", () => {
-		const hydrogen = FALLBACK_MODELS.find((model) => model.id === "gemini-4-hydrogen")!;
-		const argon = FALLBACK_MODELS.find((model) => model.id === "gemini-4-argon")!;
+		const hydrogen = models.find((model) => model.id === "gemini-4-hydrogen")!;
+		const argon = models.find((model) => model.id === "gemini-4-argon")!;
 		expect(resolveAcpModelId(hydrogen, "xhigh")).toBe("gemini-4-hydrogen-xhigh");
 		expect(resolveAcpModelId(argon, "xhigh")).toBe("gemini-4-argon-high");
 		expect(resolveAcpModelId(argon, "high")).toBe("gemini-4-argon-high");
