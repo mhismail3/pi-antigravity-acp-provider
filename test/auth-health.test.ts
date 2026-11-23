@@ -73,6 +73,17 @@ describe("Antigravity auth health", () => {
 		expect(fs.existsSync(path.join(directory, "acp_token.json"))).toBe(true);
 	});
 
+	it("removes the token without erasing settings it cannot parse", () => {
+		const directory = root();
+		const settingsPath = path.join(directory, "settings.json");
+		const settings = '{"theme":"dark",';
+		fs.writeFileSync(settingsPath, settings);
+		fs.writeFileSync(path.join(directory, "acp_token.json"), '{"refresh_token":"fixture"}');
+		clearAntigravityCredentials(directory);
+		expect(fs.readFileSync(settingsPath, "utf8")).toBe(settings);
+		expect(fs.existsSync(path.join(directory, "acp_token.json"))).toBe(false);
+	});
+
 	it("does not invoke Keychain deletion on non-macOS hosts", () => {
 		vi.spyOn(process, "platform", "get").mockReturnValue("linux");
 		clearAntigravityCredentials(root());

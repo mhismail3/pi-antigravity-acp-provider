@@ -14,7 +14,7 @@ export const KEYCHAIN_SERVICE = "gemini";
 export const KEYCHAIN_ACCOUNT = "antigravity-acp";
 
 const SECURITY_CLI = "/usr/bin/security";
-const KEYCHAIN_LOOKUP_TIMEOUT_MS = 3_000;
+const KEYCHAIN_COMMAND_TIMEOUT_MS = 3_000;
 
 export type CredentialStorageReason =
 	| "explicit-override"
@@ -41,7 +41,7 @@ export function clearAntigravityCredentials(directory = resolveAntigravityAcpDir
 	if (process.platform === "darwin") {
 		try {
 			execFileSync(SECURITY_CLI, ["delete-generic-password", "-s", KEYCHAIN_SERVICE, "-a", KEYCHAIN_ACCOUNT], {
-				timeout: KEYCHAIN_LOOKUP_TIMEOUT_MS,
+				timeout: KEYCHAIN_COMMAND_TIMEOUT_MS,
 				stdio: "ignore",
 			});
 		} catch (error) {
@@ -56,10 +56,8 @@ export function clearAntigravityCredentials(directory = resolveAntigravityAcpDir
 	try {
 		settings = JSON.parse(fs.readFileSync(settingsPath, "utf8")) as Record<string, unknown>;
 	} catch (error) {
-		if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
-		if (!(error instanceof SyntaxError)) throw error;
-		fs.rmSync(settingsPath, { force: true });
-		return;
+		if ((error as NodeJS.ErrnoException).code === "ENOENT" || error instanceof SyntaxError) return;
+		throw error;
 	}
 	delete settings.auth;
 	const temporary = `${settingsPath}.${process.pid}.tmp`;
@@ -74,7 +72,7 @@ export function clearAntigravityCredentials(directory = resolveAntigravityAcpDir
 function defaultKeychainLookup(service: string, account: string): boolean {
 	try {
 		execFileSync(SECURITY_CLI, ["find-generic-password", "-s", service, "-a", account], {
-			timeout: KEYCHAIN_LOOKUP_TIMEOUT_MS,
+			timeout: KEYCHAIN_COMMAND_TIMEOUT_MS,
 			stdio: "ignore",
 		});
 		return true;
