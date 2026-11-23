@@ -5,6 +5,7 @@ import type {
 	TranscriptContext,
 	Model,
 	Provider,
+	OAuthAuth,
 	RefreshModelsContext,
 	SimpleStreamOptions,
 } from "@earendil-works/pi-ai";
@@ -14,13 +15,13 @@ import { projectModels, PROVIDER_ID, restoreModels } from "./models.js";
 import { AntigravityRuntime, MANAGED_AUTH_MARKER } from "./runtime.js";
 
 export interface AntigravityProviderBundle {
-	provider: Provider<"antigravity-acp">;
+	provider: Provider<"antigravity-acp"> & { auth: { oauth: OAuthAuth & { logout(): Promise<void> } } };
 	runtime: AntigravityRuntime;
 }
 
 export function createAntigravityProvider(runtime = new AntigravityRuntime()): AntigravityProviderBundle {
 	let models: Model<"antigravity-acp">[] = [];
-	const provider: Provider<"antigravity-acp"> = {
+	const provider: AntigravityProviderBundle["provider"] = {
 		id: PROVIDER_ID,
 		name: "Google Antigravity (ACP)",
 		auth: {
@@ -35,9 +36,9 @@ export function createAntigravityProvider(runtime = new AntigravityRuntime()): A
 						{
 							showAuthorizationUrl(url, instructions) {
 								interaction.notify({
-									type: "info",
-									message: instructions,
-									links: [{ url, label: "Google authorization" }],
+									type: "auth_url",
+									url,
+									instructions,
 								});
 							},
 							promptForCallback: (signal) =>
@@ -58,6 +59,7 @@ export function createAntigravityProvider(runtime = new AntigravityRuntime()): A
 						expires: Number.MAX_SAFE_INTEGER,
 					};
 				},
+				logout: () => runtime.logout(),
 				async refresh(credential) {
 					return credential;
 				},

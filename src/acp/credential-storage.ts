@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import fs from "node:fs";
 import path from "node:path";
 
 import { inspectAntigravityAuth, resolveAntigravityAcpDirectory } from "./antigravity.js";
@@ -34,6 +35,40 @@ export interface CredentialStorageOptions {
 	tokenPath?: string;
 	/** Injectable keychain probe for tests; returns whether the entry exists. */
 	keychainEntry?: (service: string, account: string) => boolean;
+}
+
+export function clearAntigravityCredentials(directory = resolveAntigravityAcpDirectory()): void {
+	if (process.platform === "darwin") {
+		try {
+			execFileSync(SECURITY_CLI, ["delete-generic-password", "-s", KEYCHAIN_SERVICE, "-a", KEYCHAIN_ACCOUNT], {
+				timeout: KEYCHAIN_LOOKUP_TIMEOUT_MS,
+				stdio: "ignore",
+			});
+		} catch (error) {
+			if ((error as { status?: number }).status !== 44) {
+				throw new Error("Could not remove Antigravity credentials from the macOS Keychain");
+			}
+		}
+	}
+	fs.rmSync(path.join(directory, "acp_token.json"), { force: true });
+	const settingsPath = path.join(directory, "settings.json");
+	let settings: Record<string, unknown>;
+	try {
+		settings = JSON.parse(fs.readFileSync(settingsPath, "utf8")) as Record<string, unknown>;
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+		if (!(error instanceof SyntaxError)) throw error;
+		fs.rmSync(settingsPath, { force: true });
+		return;
+	}
+	delete settings.auth;
+	const temporary = `${settingsPath}.${process.pid}.tmp`;
+	try {
+		fs.writeFileSync(temporary, `${JSON.stringify(settings, null, 2)}\n`, { mode: 0o600 });
+		fs.renameSync(temporary, settingsPath);
+	} finally {
+		fs.rmSync(temporary, { force: true });
+	}
 }
 
 function defaultKeychainLookup(service: string, account: string): boolean {

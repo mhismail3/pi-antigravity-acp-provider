@@ -55,9 +55,9 @@ Loopback MCP traffic is exempted from proxies in the ACP child environment. Expl
 
 Standalone Pi builds also need Node.js to run the ACP supervisor. The provider looks for `node` or `nodejs` on `PATH`; set `NODE` to the executable path if neither is available. On NixOS with Home Manager, `programs.pi-coding-agent.extraPackages = [ pkgs.nodejs ];` adds Node to Pi's `PATH`. An explicit `SSL_CERT_FILE` is preserved; otherwise the provider uses `NIX_SSL_CERT_FILE` or a readable system CA bundle when available.
 
-### SSH and headless Google login
+### Client-mediated Google login
 
-When Pi is running over SSH, or on Linux without `DISPLAY`/`WAYLAND_DISPLAY`, `/login` automatically uses a manual browser relay:
+On macOS and Linux, interactive `/login` uses a client-mediated browser relay by default, including on desktop hosts. The authorization URL and paste-link prompt reach the client that started sign-in, including Tron for iPhone:
 
 1. Pi prints the Google authorization URL instead of trying to launch a browser on the server.
 2. Open that URL in a browser on your local machine and finish Google sign-in.
@@ -106,7 +106,7 @@ Permission, runtime-update, and tool-activity modes are saved in `$PI_CODING_AGE
 
 On first use of a custom profile without a config, existing permission/update settings are copied from the default agent directory (or the legacy Gemini-provider config). Existing custom configs are never overwritten, and saved sessions are not copied. **Custom Pi profiles do not isolate Antigravity accounts or managed runtimes:** Antigravity's OAuth credentials and runtime installation remain in their shared locations.
 
-`logout`/`account` clears local Antigravity credentials and saved ACP sessions. Run Pi's `/logout` afterward to remove the Pi credential marker, then `/login` for the new account. `update` checks the official registry and installs the latest approved release from the provider's signed runtime catalog. If the registry is newer than the catalog, it reports the pending version and uses the latest signed release without downgrading an already newer managed runtime. See [`docs/RUNTIME-UPDATES.md`](docs/RUNTIME-UPDATES.md).
+`logout`/`account` closes local ACP bindings and clears saved sessions, the secure-file token, the auth choice, and the macOS Keychain entry (service `gemini`, account `antigravity-acp`). Missing Keychain entries are harmless; denied or failed deletion is an error, not a successful logout. Other settings are preserved. Run Pi's `/logout` afterward to remove the Pi credential marker, then `/login` for the new account. The native provider exposes `auth.oauth.logout()` for hosts that support provider cleanup before deleting their credential marker. Tron requires its corresponding auth-broker hook; marker-only hosts still need the explicit provider command. `update` checks the official registry and installs the latest approved release from the provider's signed runtime catalog. If the registry is newer than the catalog, it reports the pending version and uses the latest signed release without downgrading an already newer managed runtime. See [`docs/RUNTIME-UPDATES.md`](docs/RUNTIME-UPDATES.md).
 
 `quota` shows each Antigravity quota group with the remaining percentage and UTC reset time of each limit, then this Pi process's token totals. The provider reads the quota by sending Antigravity's own `/usage` command to a separate short-lived ACP process, which runs no model turn and removes the short-lived conversation it creates once that process exits; the result is cached for 60 seconds. Other Pi extensions can request the same snapshot:
 

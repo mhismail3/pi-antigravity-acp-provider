@@ -11,10 +11,10 @@ import {
 } from "../src/acp/headless-oauth.js";
 
 describe("headless OAuth detection", () => {
-	it("uses manual OAuth for SSH and display-less Linux sessions", () => {
-		expect(shouldUseHeadlessOAuth({ SSH_CONNECTION: "client server" }, "linux")).toBe(true);
-		expect(shouldUseHeadlessOAuth({}, "linux")).toBe(true);
-		expect(shouldUseHeadlessOAuth({ DISPLAY: ":0" }, "linux")).toBe(false);
+	it("defaults to client-mediated OAuth even on desktop hosts", () => {
+		expect(shouldUseHeadlessOAuth({}, "darwin")).toBe(true);
+		expect(shouldUseHeadlessOAuth({ DISPLAY: ":0" }, "linux")).toBe(true);
+		expect(shouldUseHeadlessOAuth({}, "win32")).toBe(false);
 	});
 
 	it("honors an explicit mode override", () => {

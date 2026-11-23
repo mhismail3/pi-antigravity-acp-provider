@@ -74,7 +74,7 @@ Cancellation aborts authentication, closes the process, clears in-memory key buf
 
 ### Logout semantics
 
-Pi `/logout antigravity-acp` removes Pi's key/marker. It cannot automatically delete Google credentials from Gemini's shared store through the generic Pi auth contract. Provide an explicit documented `/antigravity-acp logout-upstream` only if the official CLI exposes a safe supported command/API and confirmation is clear. Never delete `~/.gemini` recursively.
+Pi's generic logout removes only its key/marker. The native provider's `auth.oauth.logout()` hook lets an embedding host await full provider cleanup before removing that marker. Tron routes sign-out through this hook; hosts without hook support use `/antigravity-acp logout` followed by Pi logout. Cleanup closes ACP bindings, clears saved sessions and quota state, deletes the scoped secure-file token and auth choice, and on macOS deletes only the `gemini` / `antigravity-acp` Keychain entry. Keychain deletion failures are surfaced; only an already-absent entry is success. Never delete `~/.gemini` recursively. Credentials remain shared across Pi profiles, so switching affects other consumers of the same Antigravity account.
 
 ## 4. Permission broker
 

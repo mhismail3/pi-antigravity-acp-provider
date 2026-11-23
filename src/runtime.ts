@@ -19,11 +19,11 @@ import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { createHash } from "node:crypto";
 
 import {
-	clearAntigravityCredentials,
 	inspectAntigravityAuth,
 	removeConversation,
 	type AntigravityAuthHealth,
 } from "./acp/antigravity.js";
+import { clearAntigravityCredentials } from "./acp/credential-storage.js";
 import { AntigravityAcpConnection, type AntigravityConnectionOptions } from "./acp/connection.js";
 import { abortError, AntigravityAcpError, errorMessage } from "./acp/errors.js";
 import { quotaExhaustion } from "./acp/quota.js";

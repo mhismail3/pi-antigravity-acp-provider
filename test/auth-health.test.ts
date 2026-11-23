@@ -1,17 +1,28 @@
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
-	clearAntigravityCredentials,
 	inspectAntigravityAuth,
 	removeConversation,
 	resolveAntigravityAcpDirectory,
 } from "../src/acp/antigravity.js";
+import { clearAntigravityCredentials } from "../src/acp/credential-storage.js";
+import { createAntigravityProvider } from "../src/provider.js";
+import { AntigravityRuntime } from "../src/runtime.js";
+
+vi.mock("node:child_process", async (importOriginal) => ({
+	...await importOriginal<typeof import("node:child_process")>(),
+	execFileSync: vi.fn(),
+}));
 
 const roots: string[] = [];
 afterEach(() => {
+	vi.unstubAllEnvs();
+	vi.restoreAllMocks();
+	vi.mocked(execFileSync).mockReset();
 	for (const root of roots.splice(0)) fs.rmSync(root, { recursive: true, force: true });
 });
 
@@ -28,13 +39,44 @@ describe("Antigravity auth health", () => {
 		expect(inspectAntigravityAuth(directory).status).toBe("configured-not-authenticated");
 	});
 
-	it("recognizes a structurally refreshable token and clears it", () => {
-		const directory = root();
-		fs.writeFileSync(path.join(directory, "settings.json"), '{"auth":{"type":"oauth-personal"}}');
+	it("logout deletes the macOS Keychain entry and secure-file token while preserving other settings", async () => {
+		vi.spyOn(process, "platform", "get").mockReturnValue("darwin");
+		const home = root();
+		vi.stubEnv("GEMINI_HOME", home);
+		const directory = path.join(home, "antigravity-acp");
+		fs.mkdirSync(directory);
+		const runtime = new AntigravityRuntime();
+		fs.writeFileSync(path.join(directory, "settings.json"), '{"auth":{"type":"oauth-personal"},"theme":"dark"}');
 		fs.writeFileSync(path.join(directory, "acp_token.json"), '{"refresh_token":"secret"}');
 		expect(inspectAntigravityAuth(directory).status).toBe("oauth-refreshable");
-		clearAntigravityCredentials(directory);
+		try {
+			await createAntigravityProvider(runtime).provider.auth.oauth.logout();
+		} finally {
+			await runtime.close();
+		}
+		expect(execFileSync).toHaveBeenCalledWith("/usr/bin/security",
+			["delete-generic-password", "-s", "gemini", "-a", "antigravity-acp"],
+			{ timeout: 3_000, stdio: "ignore" });
 		expect(inspectAntigravityAuth(directory).status).toBe("missing");
+		expect(fs.existsSync(path.join(directory, "acp_token.json"))).toBe(false);
+		expect(JSON.parse(fs.readFileSync(path.join(directory, "settings.json"), "utf8"))).toEqual({ theme: "dark" });
+	});
+
+	it("treats an absent Keychain entry as already logged out but surfaces denied deletion", () => {
+		vi.spyOn(process, "platform", "get").mockReturnValue("darwin");
+		const directory = root();
+		vi.mocked(execFileSync).mockImplementationOnce(() => { throw { status: 44 }; });
+		expect(() => clearAntigravityCredentials(directory)).not.toThrow();
+		fs.writeFileSync(path.join(directory, "acp_token.json"), '{"refresh_token":"fixture"}');
+		vi.mocked(execFileSync).mockImplementationOnce(() => { throw { status: 36, stderr: "secret" }; });
+		expect(() => clearAntigravityCredentials(directory)).toThrow("Could not remove Antigravity credentials from the macOS Keychain");
+		expect(fs.existsSync(path.join(directory, "acp_token.json"))).toBe(true);
+	});
+
+	it("does not invoke Keychain deletion on non-macOS hosts", () => {
+		vi.spyOn(process, "platform", "get").mockReturnValue("linux");
+		clearAntigravityCredentials(root());
+		expect(execFileSync).not.toHaveBeenCalled();
 	});
 
 	it("reports corrupt token files", () => {

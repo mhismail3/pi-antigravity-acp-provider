@@ -17,6 +17,11 @@ import type { AntigravityQuotaSnapshot } from "../src/acp/usage-quota.js";
 import type { PiEventWriter } from "../src/stream/pi-events.js";
 import { piToolFingerprint, PiMcpBridge } from "../src/mcp/bridge.js";
 
+vi.mock("node:child_process", async (importOriginal) => ({
+	...await importOriginal<typeof import("node:child_process")>(),
+	execFileSync: vi.fn(),
+}));
+
 const fakeAgent = fileURLToPath(new URL("./fixtures/fake-agent.mjs", import.meta.url));
 const model: Model<"antigravity-acp"> = { id: "gemini-test", name: "Test", api: "antigravity-acp", provider: "antigravity-acp", baseUrl: "", reasoning: false, input: ["text"], cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, contextWindow: 1000000, maxTokens: 8192 };
 const tools = [{ name: "echo", description: "Echo", parameters: Type.Object({ text: Type.String() }) }];

@@ -105,8 +105,7 @@ export function shouldUseHeadlessOAuth(
 	const override = environment.PI_ANTIGRAVITY_ACP_OAUTH_MODE?.trim().toLowerCase();
 	if (override === "manual") return true;
 	if (override === "browser") return false;
-	if (environment.SSH_CONNECTION || environment.SSH_CLIENT || environment.SSH_TTY) return true;
-	return platform === "linux" && !environment.DISPLAY && !environment.WAYLAND_DISPLAY;
+	return platform !== "win32";
 }
 
 function parseAuthorization(text: string): CapturedOAuthAuthorization {

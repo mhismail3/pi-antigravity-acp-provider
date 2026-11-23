@@ -1,7 +1,7 @@
-import { normalizeContext } from "@earendil-works/pi-ai";
+import { normalizeContext, type AuthEvent, type AuthPrompt } from "@earendil-works/pi-ai";
 import { fileURLToPath } from "node:url";
 import { Type } from "typebox";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { AntigravityAcpConnection } from "../src/acp/connection.js";
 import { projectModels } from "../src/models.js";
@@ -12,6 +12,37 @@ const fakeAgent = fileURLToPath(new URL("./fixtures/fake-agent.mjs", import.meta
 const model = projectModels([{ modelId: "gemini-test", name: "Gemini Test" }])[0]!;
 
 describe("native Pi provider", () => {
+	it("remote login emits auth_url and uses paste-link OAuth on a desktop host without an env override", async () => {
+		for (const name of ["PI_ANTIGRAVITY_ACP_OAUTH_MODE", "SSH_CONNECTION", "SSH_CLIENT", "SSH_TTY"]) vi.stubEnv(name, "");
+		vi.stubEnv("DISPLAY", ":0");
+		const runtime = new AntigravityRuntime((options) => new AntigravityAcpConnection({
+			...options, command: process.execPath, args: [fakeAgent, "headless-auth"],
+			env: { ...process.env, ...options.env, BROWSER: options.env?.BROWSER ?? "/nonexistent/disabled-test-browser" },
+		}));
+		const events: AuthEvent[] = [];
+		const prompts: AuthPrompt[] = [];
+		try {
+			const { provider } = createAntigravityProvider(runtime);
+			const credential = await provider.auth.oauth.login({
+				signal: AbortSignal.timeout(3_000),
+				notify: (event) => { events.push(event); },
+				prompt: async (prompt) => {
+					prompts.push(prompt);
+					const event = events.find((event) => event.type === "auth_url");
+					if (!event || event.type !== "auth_url") throw new Error("missing authorization URL");
+					const authorization = new URL(event.url);
+					return `${authorization.searchParams.get("redirect_uri")}?state=${authorization.searchParams.get("state")}&code=fake-code`;
+				},
+			});
+			expect(credential.type).toBe("oauth");
+			expect(events).toContainEqual(expect.objectContaining({ type: "auth_url", url: expect.stringMatching(/^https:\/\/accounts\.google\.com\//u) }));
+			expect(prompts).toEqual([expect.objectContaining({ type: "manual_code" })]);
+		} finally {
+			await runtime.close();
+			vi.unstubAllEnvs();
+		}
+	});
+
 	it("passes transcript instructions through to the ACP prompt", async () => {
 		const prompts: Array<Parameters<AntigravityAcpConnection["prompt"]>[0]> = [];
 		const runtime = new AntigravityRuntime((options) => {
