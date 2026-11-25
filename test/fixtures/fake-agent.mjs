@@ -268,17 +268,14 @@ for await (const line of rl) {
 				sessionUpdate: "plan",
 				entries: [{ content: "Inspect file", priority: "high", status: "in_progress" }],
 			});
-			notify({
-				sessionUpdate: "tool_call",
-				toolCallId: "tc-1",
-				title: "pi_echo",
-				kind: "other",
-				status: "in_progress",
-			});
+			// agy also reports calls of bridged Pi tools as `<server>_<tool>`; Pi already shows those.
+			notify({ sessionUpdate: "tool_call", toolCallId: "bridge-1", title: "pi-bridge_pi_echo", kind: "other", status: "pending" });
+			notify({ sessionUpdate: "tool_call", toolCallId: "tc-1", title: "ls -la", kind: "execute", status: "pending" });
 			notify({
 				sessionUpdate: "tool_call_update",
 				toolCallId: "tc-1",
 				status: "completed",
+				content: [{ type: "content", content: { type: "text", text: "file.txt" } }],
 			});
 			notify({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: "Done" } });
 			send({ jsonrpc: "2.0", id, result: { stopReason: "end_turn" } });

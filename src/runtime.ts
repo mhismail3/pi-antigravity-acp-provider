@@ -34,11 +34,12 @@ import {
 	DEFAULT_BINDING_IDLE_MS,
 	DEFAULT_MAX_BINDINGS,
 	MANAGED_AUTH_MARKER,
+	NATIVE_TOOL_NAME,
 	PERMISSION_RESULT_KIND,
 	PERMISSION_TOOL_NAME,
 } from "./constants.js";
-export { MANAGED_AUTH_MARKER, PERMISSION_RESULT_KIND, PERMISSION_TOOL_NAME } from "./constants.js";
-import { mapSessionUpdate } from "./acp/events.js";
+export { MANAGED_AUTH_MARKER, NATIVE_TOOL_NAME, PERMISSION_RESULT_KIND, PERMISSION_TOOL_NAME } from "./constants.js";
+import { mapSessionUpdate, type AcpActivity } from "./acp/events.js";
 import { ensureAntigravityAcpReady } from "./acp/setup.js";
 import { HeadlessOAuthRelay, shouldUseHeadlessOAuth } from "./acp/headless-oauth.js";
 import {
@@ -48,12 +49,21 @@ import {
 	type ToolOmission,
 	type PiToolInvocation,
 } from "./mcp/bridge.js";
-import type { PermissionMode, ToolActivityMode } from "./config.js";
+import type { PermissionMode } from "./config.js";
 import { resolveAcpModelId } from "./models.js";
 import { type PromptParts, buildPromptParts, currentSystemInstructions } from "./stream/context.js";
 import { PiEventWriter } from "./stream/pi-events.js";
 import { usageFromPrompt } from "./stream/usage.js";
 import { RuntimeMetrics } from "./status.js";
+
+/** Antigravity reports calls of bridged Pi tools under this MCP server prefix; Pi already shows them. */
+const BRIDGED_TOOL_TITLE = "pi-bridge_";
+const MAX_NATIVE_TOOLS = 256;
+
+export interface NativeToolRecord {
+	status: string;
+	output: string;
+}
 
 const PERMISSION_TIMEOUT_MS = 120_000;
 const TOOL_BATCH_MS = 100;
@@ -93,6 +103,8 @@ interface Binding {
 	writer: PiEventWriter | undefined;
 	permission: PendingPermission | undefined;
 	pendingTools: Map<string, PendingPiTool>;
+	/** Pi call ids of the running prompt's native Antigravity tools, by ACP tool call id. */
+	nativeToolIds: Map<string, string>;
 	/** Latest `usage_update.used` and the inference count of the running ACP prompt. */
 	contextUsed: number | undefined;
 	inferences: number;
@@ -129,13 +141,11 @@ export interface PermissionToolResult {
 export interface AntigravityRuntimeOptions {
 	maxBindings?: number;
 	idleMs?: number;
-	toolActivityMode?: ToolActivityMode;
 }
 
 export interface RuntimeSnapshot {
 	bindings: number;
 	permissionMode: PermissionMode;
-	toolActivityMode: ToolActivityMode;
 	metrics: ReturnType<RuntimeMetrics["snapshot"]>;
 	processes: Array<{
 		key: string;
@@ -181,7 +191,8 @@ export class AntigravityRuntime {
 	private readonly idleMs: number;
 	private readonly metrics = new RuntimeMetrics();
 	private permissionMode: PermissionMode;
-	private toolActivityMode: ToolActivityMode;
+	/** Latest state of native Antigravity tools, by display-only Pi tool call id. */
+	private readonly nativeTools = new Map<string, NativeToolRecord>();
 	private quotaCache: AntigravityQuotaSnapshot | undefined;
 	private quotaInFlight: { epoch: number; snapshot: Promise<AntigravityQuotaSnapshot> } | undefined;
 
@@ -194,7 +205,6 @@ export class AntigravityRuntime {
 		this.connectionFactory = connectionFactory ?? ((connectionOptions) => new AntigravityAcpConnection(connectionOptions));
 		this.ensureAgent = connectionFactory === undefined;
 		this.permissionMode = permissionMode;
-		this.toolActivityMode = options?.toolActivityMode ?? "compact";
 		this.sessionStore = sessionStore ?? (this.ensureAgent ? new AcpSessionStore() : undefined);
 		this.maxBindings = positiveInt(options?.maxBindings ?? process.env.PI_ANTIGRAVITY_MAX_BINDINGS, DEFAULT_MAX_BINDINGS, 1);
 		this.idleMs = positiveInt(options?.idleMs ?? process.env.PI_ANTIGRAVITY_BINDING_IDLE_MS, DEFAULT_BINDING_IDLE_MS, 1);
@@ -212,6 +222,12 @@ export class AntigravityRuntime {
 				tools: getCurrentTools(transcript.messages),
 			};
 			currentSystemInstructions(resolvedContext);
+			// Antigravity already finished the turn that ran these tools; Pi only asked again because a
+			// display result did not end its tool batch (a blocked call or a length stop). Never re-prompt.
+			if (onlyNativeToolResults(resolvedContext.messages)) {
+				writer.done("stop");
+				return writer;
+			}
 			void this.runQueued(model, resolvedContext, options, writer)
 				.then(() => {
 					if (!writer.finished) {
@@ -445,8 +461,11 @@ export class AntigravityRuntime {
 		return change;
 	}
 
-	setToolActivityMode(mode: ToolActivityMode): void {
-		this.toolActivityMode = mode;
+	/** Hands a native Antigravity tool's recorded state to its display-only Pi tool call, once. */
+	takeNativeTool(callId: string): NativeToolRecord | undefined {
+		const record = this.nativeTools.get(callId);
+		this.nativeTools.delete(callId);
+		return record;
 	}
 
 	getPermission(requestId: string): PermissionView | undefined {
@@ -484,7 +503,6 @@ export class AntigravityRuntime {
 		return {
 			bindings: processes.length,
 			permissionMode: this.permissionMode,
-			toolActivityMode: this.toolActivityMode,
 			metrics: this.metrics.snapshot(),
 			processes,
 		};
@@ -700,6 +718,7 @@ export class AntigravityRuntime {
 				binding.pendingContextFingerprint = messagesFingerprint(context.messages);
 				binding.contextUsed = undefined;
 				binding.inferences = 0;
+				binding.nativeToolIds.clear();
 				binding.turnCompletion = new Promise<void>((resolve) => {
 					completeTurn = resolve;
 				});
@@ -960,6 +979,7 @@ export class AntigravityRuntime {
 				writer,
 				permission: undefined,
 				pendingTools: new Map(),
+				nativeToolIds: new Map(),
 				contextUsed: undefined,
 				inferences: 0,
 				toolBatchTimer: undefined,
@@ -1096,18 +1116,36 @@ export class AntigravityRuntime {
 			if (activity.type === "text") binding.writer.text(activity.delta);
 			else if (activity.type === "thought") binding.writer.thinking(activity.delta);
 			else if (activity.type === "plan") binding.writer.thinking(activity.text);
-			else if (activity.type === "tool") {
-				if (this.toolActivityMode === "full") {
-					binding.writer.thinking(activity.text);
-				} else if (this.toolActivityMode === "compact" && !activity.isUpdate) {
-					binding.writer.thinking(activity.compactText);
-				}
-			} else if (activity.type === "usage") {
+			else if (activity.type === "tool") this.recordNativeTool(binding, binding.writer, activity);
+			else if (activity.type === "usage") {
 				binding.contextUsed = activity.used;
 				binding.inferences += 1;
 				if (!binding.writer.finished) binding.writer.message.usage.totalTokens = activity.used;
 			}
 		}
+	}
+
+	/**
+	 * Shows a tool Antigravity runs itself as a display-only Pi tool call. The extension's tool returns
+	 * the recorded state without running anything, and the call is never replayed to Antigravity.
+	 */
+	private recordNativeTool(binding: Binding, writer: PiEventWriter, activity: Extract<AcpActivity, { type: "tool" }>): void {
+		if (activity.start) {
+			if (writer.finished || binding.nativeToolIds.has(activity.id) || activity.title.startsWith(BRIDGED_TOOL_TITLE)) return;
+			const callId = crypto.randomUUID();
+			binding.nativeToolIds.set(activity.id, callId);
+			this.nativeTools.set(callId, { status: activity.status, output: activity.output });
+			for (const stale of this.nativeTools.keys()) {
+				if (this.nativeTools.size <= MAX_NATIVE_TOOLS) break;
+				this.nativeTools.delete(stale);
+			}
+			writer.toolCall(callId, NATIVE_TOOL_NAME, { title: activity.title });
+			return;
+		}
+		const record = this.nativeTools.get(binding.nativeToolIds.get(activity.id) ?? "");
+		if (!record) return;
+		if (activity.status) record.status = activity.status;
+		if (activity.output) record.output = activity.output;
 	}
 
 	private async dropBinding(key: string, binding: Binding, removeSaved = false): Promise<void> {
@@ -1289,6 +1327,18 @@ function hasUsableLocalAuth(health: AntigravityAuthHealth): boolean {
 
 function supportsMode(session: SessionState, mode: PermissionMode): boolean {
 	return sessionModes(session)?.availableModes.some((candidate) => candidate.id === mode) === true;
+}
+
+function onlyNativeToolResults(messages: Context["messages"]): boolean {
+	let index = messages.length - 1;
+	let results = 0;
+	for (; index >= 0 && messages[index]?.role !== "assistant"; index--) {
+		const message = messages[index]!;
+		if (message.role === "system") continue;
+		if (message.role !== "toolResult" || message.toolName !== NATIVE_TOOL_NAME) return false;
+		results += 1;
+	}
+	return results > 0;
 }
 
 function permissionView(permission: PendingPermission): PermissionView {

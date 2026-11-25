@@ -12,6 +12,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { AntigravityAcpConnection } from "../src/acp/connection.js";
 import { AcpSessionStore } from "../src/acp/session-store.js";
 import { AntigravityRuntime, PERMISSION_TOOL_NAME, PERMISSION_RESULT_KIND } from "../src/runtime.js";
+import { NATIVE_TOOL_NAME } from "../src/constants.js";
 import type { PermissionMode } from "../src/config.js";
 import type { AntigravityQuotaSnapshot } from "../src/acp/usage-quota.js";
 import type { PiEventWriter } from "../src/stream/pi-events.js";
@@ -942,43 +943,32 @@ describe("bridged update cleanliness and generated skill cleanup", () => {
 		vi.restoreAllMocks();
 	});
 
-	it("renders Antigravity tool activity according to toolActivityMode (compact default, off, full)", async () => {
-		const { runtime } = setup();
-		const compact = await drain(
-			runtime.stream(model, { tools, messages: [user("emit tool activity")] }, { sessionId: "tool-compact", apiKey: "test-key" }),
-		);
-		const compactThinking = compact.content
-			.filter((block) => block.type === "thinking")
-			.map((block) => block.thinking)
-			.join("\n");
-		expect(compactThinking).toContain("Reasoning");
-		expect(compactThinking).toContain("[Antigravity plan]");
-		expect(compactThinking).toContain("[Antigravity tool: pi_echo — in_progress]");
-		expect(compactThinking).not.toContain("[Antigravity tool update:");
+	it("emits native Antigravity tools as display-only Pi tool calls and never replays them to Antigravity", async () => {
+		const { runtime, entries } = setup();
+		const first = await turn(runtime, [user("emit tool activity")], "native-tools");
+		expect(first.stopReason).toBe("stop");
+		expect(first.content.map((block) => block.type)).toEqual(["thinking", "toolCall", "text"]);
+		const thinking = first.content.find((block) => block.type === "thinking");
+		expect(thinking?.type === "thinking" && thinking.thinking).not.toContain("[Antigravity tool");
+		const call = first.content.find((block) => block.type === "toolCall");
+		if (call?.type !== "toolCall") throw new Error("missing native tool call");
+		// The bridged Pi call agy also reports natively is not shown twice.
+		expect(call).toMatchObject({ name: NATIVE_TOOL_NAME, arguments: { title: "ls -la" } });
 
-		runtime.setToolActivityMode("off");
-		const off = await drain(
-			runtime.stream(model, { tools, messages: [user("emit tool activity")] }, { sessionId: "tool-off", apiKey: "test-key" }),
-		);
-		const offThinking = off.content
-			.filter((block) => block.type === "thinking")
-			.map((block) => block.thinking)
-			.join("\n");
-		expect(offThinking).toContain("Reasoning");
-		expect(offThinking).toContain("[Antigravity plan]");
-		expect(offThinking).not.toContain("[Antigravity tool:");
-		expect(offThinking).not.toContain("[Antigravity tool update:");
+		const result = { role: "toolResult" as const, toolCallId: call.id, toolName: NATIVE_TOOL_NAME,
+			content: [{ type: "text" as const, text: "file.txt" }], isError: false, timestamp: 2 };
+		const second = await turn(runtime, [user("emit tool activity"), first, result, user("next", 3)], "native-tools");
+		expect(second.stopReason).toBe("stop");
+		const prompts = JSON.stringify(entries().filter((entry) => entry.method === "session/prompt").at(-1)?.prompt);
+		expect(prompts).not.toContain(NATIVE_TOOL_NAME);
+		expect(prompts).not.toContain("file.txt");
 
-		runtime.setToolActivityMode("full");
-		const full = await drain(
-			runtime.stream(model, { tools, messages: [user("emit tool activity")] }, { sessionId: "tool-full", apiKey: "test-key" }),
-		);
-		const fullThinking = full.content
-			.filter((block) => block.type === "thinking")
-			.map((block) => block.thinking)
-			.join("\n");
-		expect(fullThinking).toContain("[Antigravity tool: pi_echo — in_progress]");
-		expect(fullThinking).toContain("[Antigravity tool update: tc-1 — completed]");
+		// A display result that did not end Pi's tool batch never starts another Antigravity prompt.
+		const promptCount = entries().filter((entry) => entry.method === "session/prompt").length;
+		const blocked = { ...result, isError: true, content: [{ type: "text" as const, text: "blocked" }] };
+		const extra = await turn(runtime, [user("emit tool activity"), first, blocked], "native-tools");
+		expect(extra.stopReason).toBe("stop");
+		expect(entries().filter((entry) => entry.method === "session/prompt")).toHaveLength(promptCount);
 	});
 
 	it("preserves user-authored skills/system/run-workflow/SKILL.md created during a session", async () => {

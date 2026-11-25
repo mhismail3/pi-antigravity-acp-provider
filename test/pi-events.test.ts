@@ -91,26 +91,13 @@ describe("PiEventWriter", () => {
 });
 
 describe("mapSessionUpdate tool activity", () => {
-	it("normalizes multiline tool_call titles into single-line compactText and marks updates", async () => {
+	it("normalizes native tool titles to one line and keeps bounded output", async () => {
 		const { mapSessionUpdate } = await import("../src/acp/events.js");
 		const start = mapSessionUpdate({
 			sessionId: "s1",
-			update: {
-				sessionUpdate: "tool_call",
-				toolCallId: "tc-1",
-				title: "Run\n  npm\ttest",
-				kind: "execute",
-				status: "in_progress",
-			},
+			update: { sessionUpdate: "tool_call", toolCallId: "tc-1", title: "Run\n  npm\ttest", kind: "execute" },
 		});
-		expect(start).toEqual([
-			{
-				type: "tool",
-				isUpdate: false,
-				text: "\n[Antigravity tool: Run\n  npm\ttest — in_progress]\n",
-				compactText: "\n[Antigravity tool: Run npm test — in_progress]\n",
-			},
-		]);
+		expect(start).toEqual([{ type: "tool", start: true, id: "tc-1", title: "Run npm test", status: "pending", output: "" }]);
 
 		const update = mapSessionUpdate({
 			sessionId: "s1",
@@ -118,16 +105,9 @@ describe("mapSessionUpdate tool activity", () => {
 				sessionUpdate: "tool_call_update",
 				toolCallId: "tc-1",
 				status: "completed",
-				content: [{ type: "content", content: { type: "text", text: "huge output" } }],
+				content: [{ type: "content", content: { type: "text", text: "x".repeat(5_000) } }],
 			},
 		});
-		expect(update[0]).toMatchObject({
-			type: "tool",
-			isUpdate: true,
-		});
-		if (update[0]?.type === "tool") {
-			expect(update[0].text).toContain("huge output");
-			expect(update[0].compactText).toBe("\n[Antigravity tool update: tc-1 — completed]\n");
-		}
+		expect(update).toEqual([{ type: "tool", start: false, id: "tc-1", status: "completed", output: "x".repeat(2_000) }]);
 	});
 });

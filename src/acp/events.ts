@@ -3,7 +3,8 @@ import type { SessionNotification } from "@agentclientprotocol/sdk/unstable";
 export type AcpActivity =
 	| { type: "text"; delta: string }
 	| { type: "thought"; delta: string }
-	| { type: "tool"; text: string; compactText: string; isUpdate: boolean }
+	| { type: "tool"; start: true; id: string; title: string; status: string; output: string }
+	| { type: "tool"; start: false; id: string; status?: string; output: string }
 	| { type: "plan"; text: string }
 	| { type: "usage"; used: number }
 	| { type: "unknown"; updateType: string };
@@ -19,33 +20,23 @@ export function mapSessionUpdate(notification: SessionNotification): AcpActivity
 			return update.content.type === "text"
 				? [{ type: "thought", delta: update.content.text }]
 				: [{ type: "unknown", updateType: `agent_thought:${update.content.type}` }];
-		case "tool_call": {
-			const status = update.status ? ` — ${update.status}` : "";
-			const title = clean(update.title);
-			const singleLineTitle = title.replace(/\s+/gu, " ").trim() || "tool";
-			return [
-				{
-					type: "tool",
-					isUpdate: false,
-					text: `\n[Antigravity tool: ${title}${status}]\n`,
-					compactText: `\n[Antigravity tool: ${singleLineTitle}${status}]\n`,
-				},
-			];
-		}
-		case "tool_call_update": {
-			const label = update.title ? clean(update.title) : clean(update.toolCallId);
-			const status = update.status ? ` — ${update.status}` : "";
-			const details = toolContentText(update.content);
-			const singleLineLabel = label.replace(/\s+/gu, " ").trim() || "tool";
-			return [
-				{
-					type: "tool",
-					isUpdate: true,
-					text: `\n[Antigravity tool update: ${label}${status}]${details ? `\n${details}\n` : "\n"}`,
-					compactText: `\n[Antigravity tool update: ${singleLineLabel}${status}]\n`,
-				},
-			];
-		}
+		case "tool_call":
+			return [{
+				type: "tool",
+				start: true,
+				id: update.toolCallId,
+				title: clean(update.title).replace(/\s+/gu, " ").trim() || "tool",
+				status: update.status ?? "pending",
+				output: toolContentText(update.content),
+			}];
+		case "tool_call_update":
+			return [{
+				type: "tool",
+				start: false,
+				id: update.toolCallId,
+				...(update.status ? { status: update.status } : {}),
+				output: toolContentText(update.content),
+			}];
 		case "plan": {
 			const lines = update.entries.map((entry) => `- [${entry.status}] ${clean(entry.content)}`);
 			return lines.length ? [{ type: "plan", text: `\n[Antigravity plan]\n${lines.join("\n")}\n` }] : [];

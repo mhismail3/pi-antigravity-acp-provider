@@ -2,6 +2,7 @@ import type { ContentBlock } from "@agentclientprotocol/sdk/unstable";
 import { getCurrentSystemPrompt, type Context, type Message } from "@earendil-works/pi-ai";
 
 import { AntigravityAcpError } from "../acp/errors.js";
+import { NATIVE_TOOL_NAME } from "../constants.js";
 
 const MAX_RECONSTRUCTION_CHARS = 32_000;
 const MAX_INSTRUCTION_BYTES = 256 * 1024;
@@ -256,7 +257,7 @@ function formatMessage(message: Message): HistoryEntry[] {
 		const calls: HistoryEntry[] = [];
 		for (const block of message.content) {
 			if (block.type === "text" && block.text) texts.push(block.text);
-			else if (block.type === "toolCall") calls.push({
+			else if (block.type === "toolCall" && block.name !== NATIVE_TOOL_NAME) calls.push({
 				label: `[tool call ${oneLine(block.name)} id=${oneLine(block.id)}]`,
 				body: JSON.stringify(block.arguments),
 			});
@@ -265,6 +266,8 @@ function formatMessage(message: Message): HistoryEntry[] {
 		const label = `## Assistant (${oneLine(message.provider)})`;
 		return [texts.length ? { label, body: texts.join("\n") } : { label }, ...calls];
 	}
+	// Antigravity ran these tools itself and already holds their results.
+	if (message.toolName === NATIVE_TOOL_NAME) return [];
 	return [{
 		label: `## Tool result (${oneLine(message.toolName)} id=${oneLine(message.toolCallId)}${message.isError ? ", error" : ""})`,
 		body: contentText(message.content), toolResult: true,

@@ -6,6 +6,8 @@ export const ACP_SDK_VERSION = packageJson.dependencies["@agentclientprotocol/sd
 export const ACP_PROTOCOL_VERSION = 1;
 export const MANAGED_AUTH_MARKER = "pi-antigravity-acp:managed-by-antigravity";
 export const PERMISSION_TOOL_NAME = "antigravity_acp_permission";
+/** Display-only Pi tool call standing for a tool Antigravity already ran itself. */
+export const NATIVE_TOOL_NAME = "antigravity_tool";
 export const PERMISSION_RESULT_KIND = "pi-antigravity-acp-permission-v1";
 export const BRIDGED_TOOL_RESULT_KIND = "pi-antigravity-acp-tool-v1";
 export const QUOTA_REQUEST_CHANNEL = "antigravity-acp:quota:request";

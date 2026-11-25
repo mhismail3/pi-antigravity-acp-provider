@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AntigravityAcpConnection } from "../src/acp/connection.js";
 import { AntigravityAcpError } from "../src/acp/errors.js";
 import { parseUsageQuota } from "../src/acp/usage-quota.js";
-import { QUOTA_REQUEST_CHANNEL } from "../src/constants.js";
+import { NATIVE_TOOL_NAME, QUOTA_REQUEST_CHANNEL } from "../src/constants.js";
 import { PERMISSION_TOOL_NAME } from "../src/runtime.js";
 import {
 	createFakeContext,
@@ -152,55 +152,34 @@ describe("extension entry point", () => {
 		);
 	});
 
-	it("configures tool-activity via command arguments, interactive selector, and doctor output", async () => {
+	it("shows each native Antigravity tool once with its recorded output and ends the Pi tool batch", async () => {
 		const { pi, ctx } = await load("parent");
-		const { loadConfig } = await import("../src/config.js");
-		const command = pi.commands.get("antigravity-acp")!;
+		const message = await stream([user("emit tool activity")], "parent");
+		const call = message.content.find((block) => block.type === "toolCall");
+		if (call?.type !== "toolCall") throw new Error("missing native tool call");
+		const tool = pi.tools.get(NATIVE_TOOL_NAME);
+		if (!tool) throw new Error("missing native tool display");
+		expect(tool.exposure).toBe("model-only");
+		expect(tool.prepareLoadout?.({} as never)).toEqual({ hiddenDeclarations: [NATIVE_TOOL_NAME] });
 
-		expect(loadConfig().toolActivity).toBe("compact");
-
-		await command.handler("tool-activity off", ctx as never);
-		expect(loadConfig().toolActivity).toBe("off");
-		expect(ctx.ui.notify.mock.calls.at(-1)).toEqual(["Antigravity tool activity: off", "info"]);
-
-		const offTurn = await stream([user("emit tool activity")], "parent");
-		const offThinking = offTurn.content.filter((b) => b.type === "thinking").map((b) => b.thinking).join("\n");
-		expect(offThinking).not.toContain("[Antigravity tool:");
-
-		const selectCtx = createFakeContext({
-			sessionId: "parent",
-			cwd: root,
-			selectAnswer: (labels) => labels.find((label) => label.startsWith("full ")),
-		});
-		await command.handler("tool-activity", selectCtx as never);
-		expect(loadConfig().toolActivity).toBe("full");
-
-		const fullTurn = await stream([user("emit tool activity", 2)], "parent");
-		const fullThinking = fullTurn.content.filter((b) => b.type === "thinking").map((b) => b.thinking).join("\n");
-		expect(fullThinking).toContain("[Antigravity tool: pi_echo — in_progress]");
-		expect(fullThinking).toContain("[Antigravity tool update: tc-1 — completed]");
-
-		await command.handler("tool-activity invalid", ctx as never);
-		expect(ctx.ui.notify.mock.calls.at(-1)).toEqual([
-			"Usage: /antigravity-acp tool-activity [off|compact|full]",
-			"warning",
-		]);
-
-		await command.handler("doctor", ctx as never);
-		expect(ctx.ui.notify.mock.calls.at(-1)![0]).toContain("Tool activity mode: full");
+		const result = await tool.execute(call.id, call.arguments as never, undefined, undefined, ctx as never);
+		expect(result).toMatchObject({ content: [{ type: "text", text: "file.txt" }], details: { status: "completed" }, isError: false, terminate: true });
+		// Pi never re-executes the Antigravity tool; a second display call has nothing left to show.
+		const again = await tool.execute(call.id, call.arguments as never, undefined, undefined, ctx as never);
+		expect(again).toMatchObject({ isError: false, terminate: true });
+		expect(again.content).toEqual([{ type: "text", text: "Antigravity did not record a result for this tool call." }]);
 	});
 
-	it("preserves existing updates and permissions subcommand behavior alongside tool-activity", async () => {
+	it("preserves existing updates and permissions subcommand behavior", async () => {
 		const { pi, ctx } = await load("parent");
 		const { loadConfig } = await import("../src/config.js");
 		const command = pi.commands.get("antigravity-acp")!;
 
-		await command.handler("tool-activity off", ctx as never);
 		await command.handler("updates notify", ctx as never);
 		expect(ctx.ui.notify.mock.calls.at(-1)).toEqual(["Antigravity runtime updates: notify", "info"]);
 		await command.handler("permissions auto-edit", ctx as never);
 		expect(ctx.ui.notify.mock.calls.at(-1)).toEqual(["Antigravity permission mode: auto-edit.", "info"]);
-		expect(loadConfig()).toEqual({ permissions: "auto_edit", runtimeUpdates: "notify", toolActivity: "off" });
+		expect(loadConfig()).toEqual({ permissions: "auto_edit", runtimeUpdates: "notify" });
 	});
 });
 
