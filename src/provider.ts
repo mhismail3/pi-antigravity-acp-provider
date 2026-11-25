@@ -23,10 +23,10 @@ export function createAntigravityProvider(runtime = new AntigravityRuntime()): A
 	let models: Model<"antigravity-acp">[] = [];
 	const provider: AntigravityProviderBundle["provider"] = {
 		id: PROVIDER_ID,
-		name: "Google Antigravity (ACP)",
+		name: "Google Antigravity",
 		auth: {
 			oauth: {
-				name: "Google Antigravity (ACP)",
+				name: "Google Antigravity",
 				loginLabel: "Sign in with Google",
 				async login(interaction) {
 					interaction.notify({ type: "progress", message: "Starting Antigravity Google login…" });

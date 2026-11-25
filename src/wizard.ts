@@ -21,7 +21,7 @@ export async function runSetupWizard(
 		);
 		if (!loginNow) {
 			ui.notify(
-				`Runtime ${setup.installedVersion ?? setup.approvedVersion} ready at ${setup.launch?.command ?? "unknown path"}. Run /login and choose Google Antigravity (ACP) when ready.`,
+				`Runtime ${setup.installedVersion ?? setup.approvedVersion} ready at ${setup.launch?.command ?? "unknown path"}. Run /login and choose Google Antigravity when ready.`,
 				"warning",
 			);
 			return;

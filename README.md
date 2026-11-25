@@ -41,7 +41,7 @@ In Pi:
 1. Optionally run `/antigravity-acp setup` for a runtime/auth preflight.
 2. Run `/login`.
 3. Choose **Sign in with an account**.
-4. Choose **Google Antigravity (ACP)**.
+4. Choose **Google Antigravity**.
 5. If needed, wait for the official ACP server download and extraction. Progress is shown; the Linux build observed during development expands to about 1.8 GB.
 6. Complete the Google login in the browser.
 7. Run `/antigravity-acp setup` again to perform a network auth probe and model discovery.

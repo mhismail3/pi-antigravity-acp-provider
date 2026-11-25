@@ -63,7 +63,7 @@ The extension entry must contain no transport or protocol logic. It creates one 
 
 A complete provider has:
 
-- id `antigravity-acp`, name `Google Antigravity (ACP)`;
+- id `antigravity-acp`, name `Google Antigravity`;
 - ambient/API-key auth adapter;
 - an initially empty catalog and explicitly unverified cached discovery for offline startup;
 - `refreshModels` that publishes the authenticated live ACP inventory, including an empty result;
