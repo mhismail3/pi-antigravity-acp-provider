@@ -3,11 +3,10 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { KEYCHAIN_ACCOUNT, KEYCHAIN_SERVICE } from "../src/acp/antigravity.js";
 import {
 	applyCredentialStorageEnvironment,
 	FORCE_FILE_STORAGE_ENV,
-	KEYCHAIN_ACCOUNT,
-	KEYCHAIN_SERVICE,
 	resolveCredentialStorageDecision,
 } from "../src/acp/credential-storage.js";
 

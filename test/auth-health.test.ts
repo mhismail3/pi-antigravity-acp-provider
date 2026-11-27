@@ -13,16 +13,11 @@ import { clearAntigravityCredentials } from "../src/acp/credential-storage.js";
 import { createAntigravityProvider } from "../src/provider.js";
 import { AntigravityRuntime } from "../src/runtime.js";
 
-vi.mock("node:child_process", async (importOriginal) => ({
-	...await importOriginal<typeof import("node:child_process")>(),
-	execFileSync: vi.fn(),
-}));
-
 const roots: string[] = [];
 afterEach(() => {
 	vi.unstubAllEnvs();
 	vi.restoreAllMocks();
-	vi.mocked(execFileSync).mockReset();
+	vi.mocked(execFileSync).mockClear();
 	for (const root of roots.splice(0)) fs.rmSync(root, { recursive: true, force: true });
 });
 
@@ -88,6 +83,24 @@ describe("Antigravity auth health", () => {
 		vi.spyOn(process, "platform", "get").mockReturnValue("linux");
 		clearAntigravityCredentials(root());
 		expect(execFileSync).not.toHaveBeenCalled();
+	});
+
+	it("counts a macOS Keychain login without a token file as authenticated", () => {
+		const directory = root();
+		fs.writeFileSync(path.join(directory, "settings.json"), '{"auth":{"type":"oauth-personal"}}');
+		const platform = vi.spyOn(process, "platform", "get").mockReturnValue("darwin");
+		vi.mocked(execFileSync).mockReturnValueOnce(Buffer.alloc(0));
+		expect(inspectAntigravityAuth(directory, {})).toEqual({
+			status: "oauth-refreshable", authType: "oauth-personal", tokenFile: false, settingsFile: true,
+		});
+		expect(execFileSync).toHaveBeenCalledWith("/usr/bin/security",
+			["find-generic-password", "-s", "gemini", "-a", "antigravity-acp"],
+			{ timeout: 3_000, stdio: "ignore" });
+		expect(inspectAntigravityAuth(directory, {}).status).toBe("configured-not-authenticated");
+		platform.mockReturnValue("linux");
+		const linux = vi.fn(() => true);
+		expect(inspectAntigravityAuth(directory, {}, { keychainEntry: linux }).status).toBe("configured-not-authenticated");
+		expect(linux).not.toHaveBeenCalled();
 	});
 
 	it("reports corrupt token files", () => {

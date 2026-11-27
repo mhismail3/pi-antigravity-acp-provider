@@ -2,19 +2,19 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 
-import { inspectAntigravityAuth, resolveAntigravityAcpDirectory } from "./antigravity.js";
+import {
+	inspectAntigravityAuth,
+	KEYCHAIN_ACCOUNT,
+	KEYCHAIN_COMMAND_TIMEOUT_MS,
+	KEYCHAIN_SERVICE,
+	macKeychainEntryPresent,
+	resolveAntigravityAcpDirectory,
+	SECURITY_CLI,
+} from "./antigravity.js";
 
 /** Selects the Antigravity ACP server's secure-file credential backend
  * (`credential_store.py`: `AGY_ACP_FORCE_FILE_STORAGE`). */
 export const FORCE_FILE_STORAGE_ENV = "AGY_ACP_FORCE_FILE_STORAGE";
-
-/** macOS keychain coordinates of the server's consumer (CCPA) credential:
- * `credential_store.KEYCHAIN_SERVICE` and the consumer `_KEYCHAIN_ACCOUNT`. */
-export const KEYCHAIN_SERVICE = "gemini";
-export const KEYCHAIN_ACCOUNT = "antigravity-acp";
-
-const SECURITY_CLI = "/usr/bin/security";
-const KEYCHAIN_COMMAND_TIMEOUT_MS = 3_000;
 
 export type CredentialStorageReason =
 	| "explicit-override"
@@ -69,19 +69,6 @@ export function clearAntigravityCredentials(directory = resolveAntigravityAcpDir
 	}
 }
 
-function defaultKeychainLookup(service: string, account: string): boolean {
-	try {
-		execFileSync(SECURITY_CLI, ["find-generic-password", "-s", service, "-a", account], {
-			timeout: KEYCHAIN_COMMAND_TIMEOUT_MS,
-			stdio: "ignore",
-		});
-		return true;
-	} catch {
-		// Absent, locked, or denied: treat the entry as unavailable.
-		return false;
-	}
-}
-
 /** The server prefers the login keychain on macOS and falls back to the secure
  * file only when that keychain is unusable. A plaintext token file that the
  * keychain does not mirror is therefore invisible to the server: every new
@@ -101,11 +88,12 @@ export function resolveCredentialStorageDecision(
 	if (platform !== "darwin") return { env: {}, reason: "not-darwin" };
 
 	const tokenPath = options.tokenPath ?? path.join(resolveAntigravityAcpDirectory(env), "acp_token.json");
-	if (inspectAntigravityAuth(path.dirname(tokenPath), env).status !== "oauth-refreshable") {
+	// File store only: the keychain is probed below, and only when a token file exists.
+	if (inspectAntigravityAuth(path.dirname(tokenPath), env, { keychainEntry: () => false }).status !== "oauth-refreshable") {
 		return { env: {}, reason: "no-refreshable-token-file" };
 	}
 
-	const lookup = options.keychainEntry ?? defaultKeychainLookup;
+	const lookup = options.keychainEntry ?? macKeychainEntryPresent;
 	if (lookup(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT)) return { env: {}, reason: "keychain-entry-present" };
 
 	return {

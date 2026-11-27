@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -84,12 +85,39 @@ export function removeConversation(sessionId: string, directory = resolveAntigra
 	}
 }
 
+/** macOS keychain coordinates of the server's consumer (CCPA) credential:
+ * `credential_store.KEYCHAIN_SERVICE` and the consumer `_KEYCHAIN_ACCOUNT`. */
+export const KEYCHAIN_SERVICE = "gemini";
+export const KEYCHAIN_ACCOUNT = "antigravity-acp";
+export const SECURITY_CLI = "/usr/bin/security";
+export const KEYCHAIN_COMMAND_TIMEOUT_MS = 3_000;
+
+export interface AntigravityAuthProbe {
+	/** Returns whether the keychain item exists; injectable for tests. */
+	keychainEntry?: (service: string, account: string) => boolean;
+}
+
+/** Presence only: without `-w`/`-g`, `security` never reads the secret. */
+export function macKeychainEntryPresent(service: string, account: string): boolean {
+	try {
+		execFileSync(SECURITY_CLI, ["find-generic-password", "-s", service, "-a", account], {
+			timeout: KEYCHAIN_COMMAND_TIMEOUT_MS,
+			stdio: "ignore",
+		});
+		return true;
+	} catch {
+		// Absent, locked, or denied: treat the entry as unavailable.
+		return false;
+	}
+}
+
 /** Structural local health only. A network probe is required to call an OAuth
  * token valid; secret values are never returned or logged. `env` is the
  * environment whose credentials are inspected, not necessarily this process's. */
 export function inspectAntigravityAuth(
 	directory = resolveAntigravityAcpDirectory(),
 	env: NodeJS.ProcessEnv = process.env,
+	probe: AntigravityAuthProbe = {},
 ): AntigravityAuthHealth {
 	const tokenPath = path.join(directory, "acp_token.json");
 	const settingsPath = path.join(directory, "settings.json");
@@ -117,6 +145,11 @@ export function inspectAntigravityAuth(
 		} catch {
 			return { status: "corrupt", ...(authType ? { authType } : {}), tokenFile, settingsFile };
 		}
+	}
+	// On macOS the server stores the login in the keychain, not the token file.
+	if (process.platform === "darwin"
+		&& (probe.keychainEntry ?? macKeychainEntryPresent)(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT)) {
+		return { status: "oauth-refreshable", authType: authType ?? "oauth-personal", tokenFile, settingsFile };
 	}
 	if (authType) return { status: "configured-not-authenticated", authType, tokenFile, settingsFile };
 	return { status: "missing", tokenFile, settingsFile };
