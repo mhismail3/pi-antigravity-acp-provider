@@ -170,6 +170,29 @@ describe("extension entry point", () => {
 		expect(again.content).toEqual([{ type: "text", text: "Antigravity did not record a result for this tool call." }]);
 	});
 
+	it("settles a cancelled turn's native tools as Antigravity reported them and leaves running ones unsettled", async () => {
+		const { pi } = await load("parent");
+		const provider = registry.get("antigravity-acp");
+		if (!provider) throw new Error("antigravity-acp provider is not registered");
+		const controller = new AbortController();
+		const events = provider.streamSimple(model, normalizeContext({ messages: [user("native cancel")] }),
+			{ sessionId: "parent", apiKey: "test-key", signal: controller.signal });
+		let calls = 0;
+		for await (const event of events) if (event.type === "toolcall_end" && ++calls === 2) controller.abort();
+		const message = await events.result();
+		expect(message.errorMessage).toBe("Antigravity ACP request aborted");
+		const [done, open] = message.content.filter((block) => block.type === "toolCall");
+		if (done?.type !== "toolCall" || open?.type !== "toolCall") throw new Error("missing native tool calls");
+		// settleAborted is Tron's Pi patch (pi-coding-agent 1.6.0-tron); the 1.5.2 dev types do not declare it.
+		const tool = pi.tools.get(NATIVE_TOOL_NAME) as { settleAborted?: (id: string, params: unknown) => unknown } | undefined;
+		if (!tool?.settleAborted) throw new Error("native tool cannot settle an aborted turn");
+
+		expect(tool.settleAborted(done.id, done.arguments)).toMatchObject({
+			content: [{ type: "text", text: "file.txt" }], details: { status: "completed" }, isError: false,
+		});
+		expect(tool.settleAborted(open.id, open.arguments)).toBeUndefined();
+	});
+
 	it("preserves existing updates and permissions subcommand behavior", async () => {
 		const { pi, ctx } = await load("parent");
 		const { loadConfig } = await import("../src/config.js");

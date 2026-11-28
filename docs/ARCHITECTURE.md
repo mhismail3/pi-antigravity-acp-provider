@@ -176,6 +176,8 @@ Antigravity runs its own tools inside the ACP prompt. Each `tool_call` becomes a
 
 The turn still ends with Antigravity's stop reason. Pi then runs the display tool, which returns the recorded state once, never executes anything, and sets `terminate`, so a batch of only display calls ends without another provider request. If Pi asks anyway (a blocked call or a `length` stop), the provider answers an empty `stop` without prompting Antigravity. The tool's declaration is hidden from the model through `prepareLoadout`, it is excluded from the MCP bridge, and its calls and results are left out of context reconstruction because Antigravity already holds them.
 
+When the user cancels, the response ends aborted and Pi runs none of its calls. Tron's Pi patch then asks the display tool's `settleAborted` for each call: a call Antigravity reported completed or failed records that outcome; a call still running gets no result, so it shows as interrupted, not failed.
+
 ### Permission continuation
 
 When Gemini sends `session/request_permission`:

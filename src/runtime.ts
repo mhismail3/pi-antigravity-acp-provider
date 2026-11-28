@@ -468,6 +468,12 @@ export class AntigravityRuntime {
 		return record;
 	}
 
+	/** Hands over a native tool's recorded state only once Antigravity reported it completed or failed. */
+	takeFinishedNativeTool(callId: string): NativeToolRecord | undefined {
+		const record = this.nativeTools.get(callId);
+		return record?.status === "completed" || record?.status === "failed" ? this.takeNativeTool(callId) : undefined;
+	}
+
 	getPermission(requestId: string): PermissionView | undefined {
 		for (const binding of this.resolvedBindings) {
 			if (binding.permission?.id === requestId) return permissionView(binding.permission);

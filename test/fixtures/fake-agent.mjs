@@ -262,6 +262,16 @@ for await (const line of rl) {
 		const notify = (update) => send({ jsonrpc: "2.0", method: "session/update", params: { sessionId: params.sessionId, update } });
 		// agy reports the context size after each inference; setup sends used: 0.
 		const usageUpdate = (used) => notify({ sessionUpdate: "usage_update", used, size: 1048576 });
+		if (text === "native cancel") {
+			// One native tool finished and one still running when the user cancels.
+			const notify = (update) => send({ jsonrpc: "2.0", method: "session/update", params: { sessionId: params.sessionId, update } });
+			notify({ sessionUpdate: "tool_call", toolCallId: "tc-done", title: "ls", kind: "execute", status: "pending" });
+			notify({ sessionUpdate: "tool_call_update", toolCallId: "tc-done", status: "completed",
+				content: [{ type: "content", content: { type: "text", text: "file.txt" } }] });
+			notify({ sessionUpdate: "tool_call", toolCallId: "tc-open", title: "sleep 60", kind: "execute", status: "in_progress" });
+			hangingPromptId = id;
+			continue;
+		}
 		if (text === "emit tool activity") {
 			notify({ sessionUpdate: "agent_thought_chunk", content: { type: "text", text: "Reasoning" } });
 			notify({

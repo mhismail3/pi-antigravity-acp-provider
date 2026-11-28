@@ -113,7 +113,9 @@ export function registerAntigravityAcp(pi: ExtensionAPI, connectionFactory?: Ant
 
 	// Display-only: the call stands for a tool Antigravity already ran. Pi shows it as a tool card, the model
 	// never sees the declaration, and a batch of only these calls ends without another provider request.
-	pi.registerTool({
+	// When the user cancels, Pi asks settleAborted for each call: one Antigravity finished keeps its reported
+	// outcome; a call still running stays unsettled, so Pi shows it interrupted rather than failed.
+	const nativeTool = {
 		name: NATIVE_TOOL_NAME,
 		label: "Antigravity",
 		description: "Shows a tool that Google Antigravity ran itself. Never call it.",
@@ -124,18 +126,27 @@ export function registerAntigravityAcp(pi: ExtensionAPI, connectionFactory?: Ant
 			query: Type.Optional(Type.String()),
 			url: Type.Optional(Type.String()),
 		}),
-		exposure: "model-only",
+		exposure: "model-only" as const,
 		prepareLoadout: () => ({ hiddenDeclarations: [NATIVE_TOOL_NAME] }),
-		async execute(toolCallId) {
+		async execute(toolCallId: string) {
 			const record = runtime.takeNativeTool(toolCallId);
 			return {
-				content: [{ type: "text", text: record?.output || (record ? `Antigravity reported: ${record.status}` : "Antigravity did not record a result for this tool call.") }],
+				content: [{ type: "text" as const, text: record?.output || (record ? `Antigravity reported: ${record.status}` : "Antigravity did not record a result for this tool call.") }],
 				details: record ? { status: record.status } : {},
 				isError: record?.status === "failed",
 				terminate: true,
 			};
 		},
-	});
+		settleAborted(toolCallId: string) {
+			const record = runtime.takeFinishedNativeTool(toolCallId);
+			return record && {
+				content: [{ type: "text" as const, text: record.output || `Antigravity reported: ${record.status}` }],
+				details: { status: record.status },
+				isError: record.status === "failed",
+			};
+		},
+	};
+	pi.registerTool(nativeTool);
 
 	const commandDefinition = {
 		description: "Set up, inspect, update, or configure Google Antigravity ACP",
