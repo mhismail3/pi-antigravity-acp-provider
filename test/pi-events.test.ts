@@ -97,7 +97,7 @@ describe("mapSessionUpdate tool activity", () => {
 			sessionId: "s1",
 			update: { sessionUpdate: "tool_call", toolCallId: "tc-1", title: "Run\n  npm\ttest", kind: "execute" },
 		});
-		expect(start).toEqual([{ type: "tool", start: true, id: "tc-1", title: "Run npm test", status: "pending", output: "" }]);
+		expect(start).toEqual([{ type: "tool", start: true, id: "tc-1", title: "Run npm test", input: { title: "Run npm test", command: "Run npm test" }, status: "pending", output: "" }]);
 
 		const update = mapSessionUpdate({
 			sessionId: "s1",
@@ -109,5 +109,24 @@ describe("mapSessionUpdate tool activity", () => {
 			},
 		});
 		expect(update).toEqual([{ type: "tool", start: false, id: "tc-1", status: "completed", output: "x".repeat(2_000) }]);
+	});
+
+	it("maps ACP kind, rawInput and locations to ordinary tool-card arguments", async () => {
+		const { mapSessionUpdate } = await import("../src/acp/events.js");
+		const input = (update: Record<string, unknown>) => {
+			const [activity] = mapSessionUpdate({ sessionId: "s1", update: { sessionUpdate: "tool_call", toolCallId: "t", ...update } as never });
+			return activity?.type === "tool" && activity.start ? activity.input : undefined;
+		};
+		expect(input({ title: "git status -s", kind: "execute", rawInput: { CommandLine: "git status -s", Cwd: "/repo" } }))
+			.toEqual({ title: "git status -s", command: "git status -s" });
+		expect(input({ title: "Running view_file", kind: "read", locations: [{ path: "/repo/a.ts", line: 3 }], rawInput: { AbsolutePath: "/repo/a.ts" } }))
+			.toEqual({ title: "Running view_file", path: "/repo/a.ts" });
+		expect(input({ title: "Running edit_file", kind: "edit", locations: [{ path: "/repo/b.ts" }] }))
+			.toEqual({ title: "Running edit_file", path: "/repo/b.ts" });
+		expect(input({ title: "Running grep_search", kind: "search", rawInput: { Query: "TODO", SearchPath: "/repo" }, locations: [{ path: "/repo" }] }))
+			.toEqual({ title: "Running grep_search", query: "TODO" });
+		expect(input({ title: "Running read_url_content", kind: "fetch", rawInput: { Url: "https://example.com" } }))
+			.toEqual({ title: "Running read_url_content", url: "https://example.com" });
+		expect(input({ title: "Running task_boundary", kind: "other", rawInput: { Mode: "x" } })).toEqual({ title: "Running task_boundary" });
 	});
 });

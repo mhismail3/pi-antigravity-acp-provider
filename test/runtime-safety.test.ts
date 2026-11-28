@@ -953,7 +953,7 @@ describe("bridged update cleanliness and generated skill cleanup", () => {
 		const call = first.content.find((block) => block.type === "toolCall");
 		if (call?.type !== "toolCall") throw new Error("missing native tool call");
 		// The bridged Pi call agy also reports natively is not shown twice.
-		expect(call).toMatchObject({ name: NATIVE_TOOL_NAME, arguments: { title: "ls -la" } });
+		expect(call).toMatchObject({ name: NATIVE_TOOL_NAME, arguments: { title: "ls -la", command: "ls -la" } });
 
 		const result = { role: "toolResult" as const, toolCallId: call.id, toolName: NATIVE_TOOL_NAME,
 			content: [{ type: "text" as const, text: "file.txt" }], isError: false, timestamp: 2 };

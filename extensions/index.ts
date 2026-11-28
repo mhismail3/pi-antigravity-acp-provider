@@ -117,7 +117,13 @@ export function registerAntigravityAcp(pi: ExtensionAPI, connectionFactory?: Ant
 		name: NATIVE_TOOL_NAME,
 		label: "Antigravity",
 		description: "Shows a tool that Google Antigravity ran itself. Never call it.",
-		parameters: Type.Object({ title: Type.String() }),
+		parameters: Type.Object({
+			title: Type.String(),
+			command: Type.Optional(Type.String()),
+			path: Type.Optional(Type.String()),
+			query: Type.Optional(Type.String()),
+			url: Type.Optional(Type.String()),
+		}),
 		exposure: "model-only",
 		prepareLoadout: () => ({ hiddenDeclarations: [NATIVE_TOOL_NAME] }),
 		async execute(toolCallId) {

@@ -119,13 +119,13 @@ Do not invent hidden chain-of-thought. Forward only the thought summary text Gem
 
 Map each ACP `toolCallId` of the running prompt to one display-only Pi call id, and keep that call's latest `status` and bounded text `output` until Pi reads it.
 
-- `tool_call`: close text and emit a Pi `toolCall` of the display-only `antigravity_tool` with the one-line title (skipped for `pi-bridge_…` titles, which are bridged Pi calls).
+- `tool_call`: close text and emit a Pi `toolCall` of the display-only `antigravity_tool` with the one-line title and, by ACP kind, `command` (execute: `rawInput.CommandLine` or the title), `path` (read/edit/delete/move: first location), `query` (search) or `url` (fetch) (skipped for `pi-bridge_…` titles, which are bridged Pi calls).
 - `tool_call_update`: record the latest status and bounded text output (diffs as `[diff: path]`) for that call.
 - the display tool returns the recorded state without executing anything and ends Pi's tool batch; see ARCHITECTURE "Native tool display".
 
 Never emit a Pi `toolCall` that would re-execute a Gemini tool. Display calls run nothing; provider-owned permission/MCP round trips are the only calls Pi executes for the agent.
 
-Gemini-native tool operations appear as display-only `antigravity_tool` call/result pairs holding the title, final status and bounded output, not a lossless structured record (no raw input or full output). In contrast, bridged Pi/marketplace tools do produce normal Pi tool history. Namespace bridged names as `pi_<name>` (with a reversible collision-safe encoding). Pi hooks/policies apply to those bridged calls, not to similarly named Gemini-native calls; Gemini-native mutating calls still require the ACP/Gemini permission policy. Cross-provider tests must validate both cases and documentation must not claim full structured parity for Gemini-native tools.
+Gemini-native tool operations appear as display-only `antigravity_tool` call/result pairs holding the title, the mapped command/path/query/url, final status and bounded output, not a lossless structured record (no raw input or full output). In contrast, bridged Pi/marketplace tools do produce normal Pi tool history. Namespace bridged names as `pi_<name>` (with a reversible collision-safe encoding). Pi hooks/policies apply to those bridged calls, not to similarly named Gemini-native calls; Gemini-native mutating calls still require the ACP/Gemini permission policy. Cross-provider tests must validate both cases and documentation must not claim full structured parity for Gemini-native tools.
 
 ### Plans and commands
 

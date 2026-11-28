@@ -3,11 +3,20 @@ import type { SessionNotification } from "@agentclientprotocol/sdk/unstable";
 export type AcpActivity =
 	| { type: "text"; delta: string }
 	| { type: "thought"; delta: string }
-	| { type: "tool"; start: true; id: string; title: string; status: string; output: string }
+	| { type: "tool"; start: true; id: string; title: string; input: NativeToolInput; status: string; output: string }
 	| { type: "tool"; start: false; id: string; status?: string; output: string }
 	| { type: "plan"; text: string }
 	| { type: "usage"; used: number }
 	| { type: "unknown"; updateType: string };
+
+/** Display arguments of a native tool card: the keys Pi tool cards already show for commands, files, searches and URLs. */
+export interface NativeToolInput {
+	title: string;
+	command?: string;
+	path?: string;
+	query?: string;
+	url?: string;
+}
 
 export function mapSessionUpdate(notification: SessionNotification): AcpActivity[] {
 	const update = notification.update;
@@ -20,15 +29,18 @@ export function mapSessionUpdate(notification: SessionNotification): AcpActivity
 			return update.content.type === "text"
 				? [{ type: "thought", delta: update.content.text }]
 				: [{ type: "unknown", updateType: `agent_thought:${update.content.type}` }];
-		case "tool_call":
+		case "tool_call": {
+			const title = clean(update.title).replace(/\s+/gu, " ").trim() || "tool";
 			return [{
 				type: "tool",
 				start: true,
 				id: update.toolCallId,
-				title: clean(update.title).replace(/\s+/gu, " ").trim() || "tool",
+				title,
+				input: nativeToolInput(title, update.kind, update.rawInput, update.locations),
 				status: update.status ?? "pending",
 				output: toolContentText(update.content),
 			}];
+		}
 		case "tool_call_update":
 			return [{
 				type: "tool",
@@ -47,6 +59,24 @@ export function mapSessionUpdate(notification: SessionNotification): AcpActivity
 		default:
 			return [{ type: "unknown", updateType: update.sessionUpdate }];
 	}
+}
+
+/** agy titles an execute call with its command line and reports paths as ACP locations. */
+function nativeToolInput(title: string, kind: unknown, rawInput: unknown, locations: unknown): NativeToolInput {
+	const raw = rawInput && typeof rawInput === "object" && !Array.isArray(rawInput) ? rawInput as Record<string, unknown> : {};
+	const field = (...keys: string[]) => {
+		for (const key of keys) if (typeof raw[key] === "string" && raw[key].trim()) return clean(raw[key]).trim();
+		return undefined;
+	};
+	const location = Array.isArray(locations) && typeof locations[0]?.path === "string" ? clean(locations[0].path) : undefined;
+	const [key, value] = kind === "execute" ? ["command", field("CommandLine", "command_line", "command") ?? title] as const
+		: kind === "read" || kind === "edit" || kind === "delete" || kind === "move" ? ["path", location] as const
+		: kind === "search" ? ["query", field("Query", "query", "Pattern", "pattern")] as const
+		: kind === "fetch" ? ["url", field("Url", "url")] as const
+		: [undefined, undefined] as const;
+	const input: NativeToolInput = { title };
+	if (key && value) input[key] = value;
+	return input;
 }
 
 function toolContentText(content: SessionNotification["update"] extends infer _T ? unknown : never): string {

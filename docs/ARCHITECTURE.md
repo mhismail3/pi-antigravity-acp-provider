@@ -172,7 +172,7 @@ Commit the new watermark only after a completed turn. On abort/error, preserve e
 
 ### Native tool display
 
-Antigravity runs its own tools inside the ACP prompt. Each `tool_call` becomes a Pi `toolCall` of the registered display-only `antigravity_tool` (arguments: the one-line title) in the same assistant message; `tool_call_update`s update the runtime's record of its status and bounded output. Calls titled `pi-bridge_…` are bridged Pi tools and already have their own Pi calls, so they are skipped.
+Antigravity runs its own tools inside the ACP prompt. Each `tool_call` becomes a Pi `toolCall` of the registered display-only `antigravity_tool` (arguments: the one-line title, plus `command`, `path`, `query` or `url` mapped from the ACP kind, `rawInput` and first location) in the same assistant message; `tool_call_update`s update the runtime's record of its status and bounded output. Calls titled `pi-bridge_…` are bridged Pi tools and already have their own Pi calls, so they are skipped.
 
 The turn still ends with Antigravity's stop reason. Pi then runs the display tool, which returns the recorded state once, never executes anything, and sets `terminate`, so a batch of only display calls ends without another provider request. If Pi asks anyway (a blocked call or a `length` stop), the provider answers an empty `stop` without prompting Antigravity. The tool's declaration is hidden from the model through `prepareLoadout`, it is excluded from the MCP bridge, and its calls and results are left out of context reconstruction because Antigravity already holds them.
 

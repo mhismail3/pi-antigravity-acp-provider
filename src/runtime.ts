@@ -1139,7 +1139,7 @@ export class AntigravityRuntime {
 				if (this.nativeTools.size <= MAX_NATIVE_TOOLS) break;
 				this.nativeTools.delete(stale);
 			}
-			writer.toolCall(callId, NATIVE_TOOL_NAME, { title: activity.title });
+			writer.toolCall(callId, NATIVE_TOOL_NAME, { ...activity.input });
 			return;
 		}
 		const record = this.nativeTools.get(binding.nativeToolIds.get(activity.id) ?? "");
